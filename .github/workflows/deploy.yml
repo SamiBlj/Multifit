@@ -35,6 +35,9 @@ jobs:
           EXPO_PUBLIC_STRIPE_PAYMENT_LINK: ${{ secrets.EXPO_PUBLIC_STRIPE_PAYMENT_LINK }}
         run: npx expo export --platform web
 
+      - name: Disable Jekyll
+        run: touch "nutrition app/dist/.nojekyll"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
