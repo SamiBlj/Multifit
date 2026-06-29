@@ -52,15 +52,15 @@ export async function getProfile(uid: string): Promise<Partial<UserProfile> | nu
 // ─── Daily Targets ────────────────────────────────────────────────────────────
 
 export async function saveDailyTargets(uid: string, targets: {
-  calories: number; proteinG: number; carbsG: number; fatG: number;
+  calories: number; proteinG: number; carbsG: number; fatG: number; fibersG?: number;
 }): Promise<void> {
-  // Store targets inside the profile row
   await supabase.from('profiles').upsert({
     id:             uid,
     daily_calories: targets.calories,
     daily_protein:  targets.proteinG,
     daily_carbs:    targets.carbsG,
     daily_fat:      targets.fatG,
+    daily_fibers:   targets.fibersG ?? null,
     updated_at:     new Date().toISOString(),
   });
 }

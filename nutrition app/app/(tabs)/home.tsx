@@ -11,6 +11,8 @@ import { useRecommendationsStore } from '../../store/recommendationsStore';
 import { GOAL_META } from '../../constants/goalMeta';
 import { calcDailyTargets } from '../../services/recommendation/calorieCalculator';
 import { recommendMeals } from '../../services/recommendation/mealRecommender';
+import { getMealLogsForDate, getWaterForDate } from '../../services/supabase/database';
+import { useState, useEffect } from 'react';
 
 const { width } = Dimensions.get('window');
 
@@ -44,6 +46,27 @@ export default function HomeScreen() {
   const { getTodaysPlan }   = useNutritionStore();
   const { plan }            = useWorkoutStore();
   const { recommendations } = useRecommendationsStore();
+
+  const today_date = new Date().toISOString().split('T')[0];
+
+  const [loggedCal,  setLoggedCal]  = useState(0);
+  const [loggedPro,  setLoggedPro]  = useState(0);
+  const [loggedCarb, setLoggedCarb] = useState(0);
+  const [loggedFat,  setLoggedFat]  = useState(0);
+  const [loggedWater,setLoggedWater]= useState(0);
+  const [loggedMeals,setLoggedMeals]= useState<any[]>([]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    getMealLogsForDate(user.uid, today_date).then(logs => {
+      setLoggedMeals(logs);
+      setLoggedCal (logs.reduce((a: number, l: any) => a + (l.calories  ?? 0), 0));
+      setLoggedPro (logs.reduce((a: number, l: any) => a + (l.protein_g ?? 0), 0));
+      setLoggedCarb(logs.reduce((a: number, l: any) => a + (l.carbs_g   ?? 0), 0));
+      setLoggedFat (logs.reduce((a: number, l: any) => a + (l.fat_g     ?? 0), 0));
+    });
+    getWaterForDate(user.uid, today_date).then(setLoggedWater);
+  }, [user?.uid, today_date]);
 
   const displayName   = profile?.name ?? user?.name ?? 'Athlete';
   const firstName     = displayName.split(' ')[0];
@@ -125,6 +148,146 @@ export default function HomeScreen() {
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+          </View>
+        )}
+
+        {/* ── Today's Progress (Diary) ─────────────────────────────────────── */}
+        {targets && (
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <SectionTitle title="Today's Progress" />
+              <TouchableOpacity style={styles.seeAll} onPress={() => router.push('/(tabs)/nutrition')}>
+                <Text style={styles.seeAllText}>Diary</Text>
+                <Ionicons name="arrow-forward" size={13} color={Colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.diaryCard}>
+              {/* Calorie ring-style header */}
+              <View style={styles.diaryCalRow}>
+                <View style={styles.diaryCalLeft}>
+                  <Text style={styles.diaryCalNum}>{loggedCal}</Text>
+                  <Text style={styles.diaryCalOf}>/ {targets.calories} kcal</Text>
+                  <Text style={styles.diaryCalSub}>
+                    {targets.calories - loggedCal > 0
+                      ? `${targets.calories - loggedCal} kcal remaining`
+                      : 'Daily target hit 🎉'}
+                  </Text>
+                </View>
+                {/* Circular progress ring */}
+                {(() => {
+                  const pct = Math.min(loggedCal / Math.max(targets.calories, 1), 1);
+                  const SIZE = 80, STROKE = 8, R = (SIZE - STROKE) / 2;
+                  const CIRC = 2 * Math.PI * R;
+                  return (
+                    <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' }}>
+                      {/* Background ring */}
+                      <View style={{
+                        position: 'absolute', width: SIZE, height: SIZE, borderRadius: SIZE / 2,
+                        borderWidth: STROKE, borderColor: `${goalMeta.color}22`,
+                      }} />
+                      {/* Foreground arc — RN border trick: show only top+right borders and rotate */}
+                      {pct > 0 && (
+                        <View style={{
+                          position: 'absolute', width: SIZE, height: SIZE, borderRadius: SIZE / 2,
+                          borderWidth: STROKE,
+                          borderTopColor:    pct >= 0.125 ? goalMeta.color : 'transparent',
+                          borderRightColor:  pct >= 0.375 ? goalMeta.color : 'transparent',
+                          borderBottomColor: pct >= 0.625 ? goalMeta.color : 'transparent',
+                          borderLeftColor:   pct >= 0.875 ? goalMeta.color : 'transparent',
+                          transform: [{ rotate: `${pct * 360 - 90}deg` }],
+                        }} />
+                      )}
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={{ fontSize: FontSize.sm, fontWeight: FontWeight.black, color: goalMeta.color }}>
+                          {Math.round(pct * 100)}%
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
+              </View>
+
+              {/* Macro progress bars */}
+              {[
+                { label: 'Protein',  logged: loggedPro,  goal: targets.proteinG, color: Colors.accent, unit: 'g', emoji: '💪' },
+                { label: 'Carbs',    logged: loggedCarb, goal: targets.carbsG,   color: Colors.bulk,   unit: 'g', emoji: '⚡' },
+                { label: 'Fat',      logged: loggedFat,  goal: targets.fatG,     color: '#A78BFA',     unit: 'g', emoji: '🥑' },
+              ].map(m => {
+                const pct = Math.min(m.logged / Math.max(m.goal, 1), 1);
+                return (
+                  <View key={m.label} style={styles.diaryMacroRow}>
+                    <Text style={styles.diaryMacroEmoji}>{m.emoji}</Text>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.diaryMacroLabelRow}>
+                        <Text style={styles.diaryMacroLabel}>{m.label}</Text>
+                        <Text style={styles.diaryMacroValues}>
+                          <Text style={{ color: m.color, fontWeight: FontWeight.bold }}>{m.logged}</Text>
+                          <Text style={styles.diaryMacroOf}> / {m.goal}{m.unit}</Text>
+                        </Text>
+                      </View>
+                      <View style={styles.diaryBar}>
+                        <View style={[styles.diaryBarFill, { width: `${pct * 100}%`, backgroundColor: m.color }]} />
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+
+              {/* Water progress */}
+              {(() => {
+                const waterGoal = Math.min(3500, Math.max(2000, Math.round((profile?.weightKg ?? 70) * 35 / 100) * 100));
+                const waterPct  = Math.min(loggedWater / waterGoal, 1);
+                const waterL    = (loggedWater / 1000).toFixed(1);
+                const goalL     = (waterGoal / 1000).toFixed(1);
+                return (
+                  <View style={[styles.diaryMacroRow, { marginTop: Spacing.xs, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border }]}>
+                    <Text style={styles.diaryMacroEmoji}>💧</Text>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.diaryMacroLabelRow}>
+                        <Text style={styles.diaryMacroLabel}>Water</Text>
+                        <Text style={styles.diaryMacroValues}>
+                          <Text style={{ color: Colors.accent, fontWeight: FontWeight.bold }}>{waterL}L</Text>
+                          <Text style={styles.diaryMacroOf}> / {goalL}L</Text>
+                        </Text>
+                      </View>
+                      <View style={styles.diaryBar}>
+                        <View style={[styles.diaryBarFill, { width: `${waterPct * 100}%`, backgroundColor: Colors.accent }]} />
+                      </View>
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {/* Logged meals list */}
+              {loggedMeals.length > 0 && (
+                <View style={styles.diaryMealList}>
+                  <Text style={styles.diaryMealListTitle}>Logged today</Text>
+                  {loggedMeals.slice(0, 4).map((log: any, i: number) => (
+                    <View key={i} style={styles.diaryMealRow}>
+                      <Text style={styles.diaryMealEmoji}>{MEAL_ICONS[log.meal_type] ?? '🍽️'}</Text>
+                      <Text style={styles.diaryMealName} numberOfLines={1}>{log.name}</Text>
+                      <Text style={styles.diaryMealKcal}>{log.calories} kcal</Text>
+                    </View>
+                  ))}
+                  {loggedMeals.length > 4 && (
+                    <Text style={styles.diaryMealMore}>+{loggedMeals.length - 4} more in diary</Text>
+                  )}
+                </View>
+              )}
+
+              {loggedMeals.length === 0 && (
+                <View style={styles.diaryEmpty}>
+                  <Text style={styles.diaryEmptyEmoji}>🍽️</Text>
+                  <Text style={styles.diaryEmptyText}>No meals logged yet today</Text>
+                  <TouchableOpacity style={[styles.diaryLogBtn, { backgroundColor: `${goalMeta.color}18`, borderColor: `${goalMeta.color}44` }]}
+                    onPress={() => router.push('/(tabs)/nutrition')}>
+                    <Text style={[styles.diaryLogBtnTxt, { color: goalMeta.color }]}>Log a meal</Text>
+                    <Ionicons name="add-circle-outline" size={14} color={goalMeta.color} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           </View>
         )}
 
@@ -299,6 +462,40 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.textPrimary, marginBottom: Spacing.md },
   seeAll:       { flexDirection: 'row', alignItems: 'center', gap: 4 },
   seeAllText:   { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.medium },
+
+  // ── Diary progress card ──────────────────────────────────────────────────
+  diaryCard:          { backgroundColor: Colors.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border, padding: Spacing.lg, gap: Spacing.md },
+  diaryCalRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  diaryCalLeft:       { flex: 1 },
+  diaryCalNum:        { fontSize: 36, fontWeight: FontWeight.black, color: Colors.textPrimary, lineHeight: 40 },
+  diaryCalOf:         { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2 },
+  diaryCalSub:        { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4 },
+  diaryRingWrap:      { alignItems: 'center', justifyContent: 'center', width: 84, height: 84 },
+  diaryRing:          { width: 76, height: 76, position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  diaryRingBg:        { position: 'absolute', width: 76, height: 76, borderRadius: 38, borderWidth: 7, borderColor: Colors.border },
+  diaryRingFill:      { position: 'absolute', width: 76, height: 76, borderRadius: 38, borderWidth: 7, borderColor: Colors.primary },
+  diaryRingInner:     { alignItems: 'center', justifyContent: 'center' },
+  diaryRingPct:       { fontSize: FontSize.sm, fontWeight: FontWeight.black },
+  diaryMacroRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  diaryMacroEmoji:    { fontSize: 16, width: 24 },
+  diaryMacroLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  diaryMacroLabel:    { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.medium },
+  diaryMacroValues:   { fontSize: FontSize.xs },
+  diaryMacroOf:       { color: Colors.textMuted },
+  diaryBar:           { height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden' },
+  diaryBarFill:       { height: 6, borderRadius: 3 },
+  diaryMealList:      { borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: Spacing.sm, gap: 6 },
+  diaryMealListTitle: { fontSize: FontSize.xs, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
+  diaryMealRow:       { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  diaryMealEmoji:     { fontSize: 15 },
+  diaryMealName:      { flex: 1, fontSize: FontSize.sm, color: Colors.textPrimary },
+  diaryMealKcal:      { fontSize: FontSize.xs, color: Colors.textMuted },
+  diaryMealMore:      { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', paddingTop: 2 },
+  diaryEmpty:         { alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm },
+  diaryEmptyEmoji:    { fontSize: 32 },
+  diaryEmptyText:     { fontSize: FontSize.sm, color: Colors.textMuted },
+  diaryLogBtn:        { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1, marginTop: 4 },
+  diaryLogBtnTxt:     { fontSize: FontSize.sm, fontWeight: FontWeight.semibold },
 
   // Workout card
   workoutCard:     { backgroundColor: Colors.surface, borderRadius: Radius.xl, borderWidth: 1, overflow: 'hidden' },

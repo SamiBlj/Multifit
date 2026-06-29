@@ -52,6 +52,7 @@ export default function NutritionScreen() {
   const [waterTotalMl, setWaterTotalMl]    = useState(0);
   const [searchQuery, setSearchQuery]       = useState('');
   const [filterType, setFilterType]         = useState<string | null>(null);
+  const [recTypeFilter, setRecTypeFilter]   = useState<string | null>(null);
   const [filterTag, setFilterTag]           = useState<string | null>(null);
   const [diaryLog, setDiaryLog]             = useState<{ meal: LoggableMeal; servings: number; time: string }[]>([]);
 
@@ -171,86 +172,156 @@ export default function NutritionScreen() {
       ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'Recommended' && (
         <>
-          {/* Day selector */}
-          {calendar && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayStrip}>
-              {calendar.days.map((_, i) => {
-                const isToday = i === todayIndex;
-                const isSel   = i === selectedDayIndex;
-                return (
-                  <TouchableOpacity
-                    key={i}
-                    style={[styles.dayPill, isSel && styles.dayPillActive, isToday && !isSel && styles.dayPillToday]}
-                    onPress={() => setSelectedDayIndex(i)}
-                  >
-                    <Text style={[styles.dayNum, isSel && styles.dayTextActive]}>{i + 1}</Text>
-                    <Text style={[styles.dayLbl, isSel && styles.dayTextActive]}>{DAY_LABELS[i]}</Text>
-                    {isToday && <View style={[styles.todayDot, isSel && { backgroundColor: Colors.white }]} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          )}
+          {/* Calendar header */}
+          <View style={styles.calHeader}>
+            <Text style={styles.calTitle}>Meal Calendar</Text>
+            <Text style={styles.calSubtitle}>Every day, a brand-new plan.</Text>
+          </View>
+
+          {/* Day strip — centred, all 7 visible, no scroll */}
+          <View style={styles.dayStripCentered}>
+            {DAY_LABELS.map((lbl, i) => {
+              const isToday = i === todayIndex;
+              const isSel   = i === selectedDayIndex;
+              return (
+                <TouchableOpacity
+                  key={i}
+                  style={[styles.dayPillCentered, isSel && styles.dayPillActive, isToday && !isSel && styles.dayPillToday]}
+                  onPress={() => setSelectedDayIndex(i)}
+                >
+                  <Text style={[styles.dayLblCentered, isSel && styles.dayTextActive]}>{lbl}</Text>
+                  {isToday && <View style={[styles.todayDot, isSel && { backgroundColor: Colors.white }]} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Meal type filter chips */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recTypeStrip}>
+            {([null, 'breakfast', 'lunch', 'dinner', 'snack'] as const).map((t) => {
+              const label = t === null ? 'All' : t.charAt(0).toUpperCase() + t.slice(1);
+              const icon  = t === null ? '🍽️' : MEAL_ICONS[t];
+              const col   = t === null ? Colors.primary : MEAL_COLORS[t];
+              const active = recTypeFilter === t;
+              return (
+                <TouchableOpacity
+                  key={label}
+                  style={[styles.recTypeChip, active && { backgroundColor: col, borderColor: col }]}
+                  onPress={() => setRecTypeFilter(t)}
+                >
+                  <Text style={styles.recTypeEmoji}>{icon}</Text>
+                  <Text style={[styles.recTypeText, active && { color: Colors.white }]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
           <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-            {/* Day macro bar */}
-            {selectedDay && (
-              <View style={styles.macroBar}>
-                {[
-                  { l: 'Calories', v: selectedDay.meals.reduce((a,m)=>a+m.calories,0), c: Colors.primary, u: 'kcal' },
-                  { l: 'Protein',  v: selectedDay.meals.reduce((a,m)=>a+(m as any).protein,0), c: Colors.accent, u: 'g' },
-                  { l: 'Carbs',    v: selectedDay.meals.reduce((a,m)=>a+(m as any).carbs,0),   c: Colors.bulk,   u: 'g' },
-                  { l: 'Fat',      v: selectedDay.meals.reduce((a,m)=>a+(m as any).fat,0),     c: '#A78BFA',     u: 'g' },
-                ].map(m => (
-                  <View key={m.l} style={styles.macroChip}>
-                    <Text style={[styles.macroVal, { color: m.c }]}>{m.v}</Text>
-                    <Text style={styles.macroUnit}>{m.u}</Text>
-                    <Text style={styles.macroLbl}>{m.l}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+            {/* ── Calorie + macro progress bar — always uses ALL meals for the day total ── */}
+            {(() => {
+              const allDayMeals: any[] = selectedDay
+                ? selectedDay.meals
+                : liveRecs
+                  ? [liveRecs.breakfast[selectedDayIndex % Math.max(liveRecs.breakfast.length,1)],
+                     liveRecs.lunch    [selectedDayIndex % Math.max(liveRecs.lunch.length,1)],
+                     liveRecs.dinner   [selectedDayIndex % Math.max(liveRecs.dinner.length,1)],
+                     liveRecs.snack?.[selectedDayIndex % Math.max(liveRecs.snack?.length||1,1)]].filter(Boolean)
+                  : [];
 
-            {/* Meals */}
-            {selectedDay ? (
-              selectedDay.meals.map(meal => (
-                <MealBlock key={meal.id} meal={meal as any} expanded={expandedMealId===meal.id}
-                  onToggle={() => router.push(`/meal/${(meal as any).id}`)}
-                  onLog={() => openLog(meal as any)} />
-              ))
-            ) : liveRecs ? (
-              <>
-                <View style={styles.recBanner}>
-                  <Ionicons name="sparkles" size={14} color={Colors.primary} />
-                  <Text style={styles.recBannerText}>Personalised picks matched to your goal & macros</Text>
-                </View>
-                {(['breakfast','lunch','dinner','snack'] as const).map(type => {
-                  const meals = liveRecs[type].slice(0, 4);
-                  if (!meals.length) return null;
-                  return (
-                    <View key={type}>
-                      <View style={styles.typeHeaderRow}>
-                        <Text style={styles.typeEmoji}>{MEAL_ICONS[type]}</Text>
-                        <Text style={[styles.typeHeader, { color: MEAL_COLORS[type] }]}>
-                          {type.charAt(0).toUpperCase() + type.slice(1)}
-                        </Text>
-                      </View>
-                      {meals.map(meal => (
-                        <MealBlock key={meal.id} meal={meal as any} expanded={false}
-                          onToggle={() => router.push(`/meal/${(meal as any).id}`)}
-                          onLog={() => openLog(meal as any)} showScore accentColor={MEAL_COLORS[type]} />
-                      ))}
+              const totCal  = allDayMeals.reduce((a, m) => a + (m?.calories ?? 0), 0);
+              const totPro  = allDayMeals.reduce((a, m) => a + (m?.protein  ?? 0), 0);
+              const totCarb = allDayMeals.reduce((a, m) => a + (m?.carbs    ?? 0), 0);
+              const totFat  = allDayMeals.reduce((a, m) => a + (m?.fat      ?? 0), 0);
+
+              if (!allDayMeals.length) return null;
+              return (
+                <View style={styles.calMacroCard}>
+                  <View style={styles.calMacroTop}>
+                    <Text style={styles.calMacroKcal}>{totCal} <Text style={styles.calMacroKcalUnit}>kcal</Text></Text>
+                    <View style={styles.calMacroRight}>
+                      <Text style={[styles.calMacroPill, { color: Colors.accent }]}>P {totPro}g</Text>
+                      <Text style={[styles.calMacroPill, { color: Colors.bulk }]}>C {totCarb}g</Text>
+                      <Text style={[styles.calMacroPill, { color: '#FF6B8A' }]}>F {totFat}g</Text>
                     </View>
-                  );
-                })}
-              </>
-            ) : (
-              <View style={styles.empty}>
-                <Text style={styles.emptyEmoji}>🍽️</Text>
-                <Text style={styles.emptyTitle}>No plan yet</Text>
-                <Text style={styles.emptyText}>Complete onboarding to get personalised meal recommendations.</Text>
-              </View>
-            )}
+                  </View>
+                  <View style={styles.calSegBar}>
+                    <View style={[styles.calSegFill, { flex: totPro,  backgroundColor: Colors.accent }]} />
+                    <View style={[styles.calSegFill, { flex: totCarb, backgroundColor: Colors.bulk }]} />
+                    <View style={[styles.calSegFill, { flex: totFat,  backgroundColor: '#FF6B8A' }]} />
+                  </View>
+                </View>
+              );
+            })()}
+
+            {/* ── Meal cards — filtered by recTypeFilter ── */}
+            {(() => {
+              const allDayMeals: any[] = selectedDay
+                ? selectedDay.meals
+                : liveRecs
+                  ? [liveRecs.breakfast[selectedDayIndex % Math.max(liveRecs.breakfast.length,1)],
+                     liveRecs.lunch    [selectedDayIndex % Math.max(liveRecs.lunch.length,1)],
+                     liveRecs.dinner   [selectedDayIndex % Math.max(liveRecs.dinner.length,1)],
+                     liveRecs.snack?.[selectedDayIndex % Math.max(liveRecs.snack?.length||1,1)]].filter(Boolean)
+                  : [];
+              const dayMeals = recTypeFilter ? allDayMeals.filter((m: any) => m?.type === recTypeFilter) : allDayMeals;
+
+              if (!dayMeals.length) return (
+                <View style={styles.empty}>
+                  <Text style={styles.emptyEmoji}>🍽️</Text>
+                  <Text style={styles.emptyTitle}>No plan yet</Text>
+                  <Text style={styles.emptyText}>Complete onboarding to get personalised meal recommendations.</Text>
+                </View>
+              );
+
+              return dayMeals.map((meal: any) => {
+                const col = MEAL_COLORS[meal.type] ?? Colors.primary;
+                return (
+                  <TouchableOpacity
+                    key={meal.id}
+                    style={styles.calMealCard}
+                    onPress={() => router.push(`/meal/${meal.id}` as any)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.calMealTop}>
+                      {/* Type icon */}
+                      <View style={[styles.calMealIcon, { backgroundColor: `${col}22` }]}>
+                        <Text style={{ fontSize: 18 }}>{MEAL_ICONS[meal.type] ?? '🍽️'}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.calMealType, { color: col }]}>{meal.type.charAt(0).toUpperCase()+meal.type.slice(1)}</Text>
+                        <Text style={styles.calMealName}>{meal.name}</Text>
+                      </View>
+                      <Text style={[styles.calMealKcal, { color: col }]}>{meal.calories} kcal</Text>
+                    </View>
+
+                    {meal.description ? (
+                      <Text style={styles.calMealDesc} numberOfLines={2}>{meal.description}</Text>
+                    ) : null}
+
+                    <View style={styles.calMealBottom}>
+                      <View style={styles.calMealMacros}>
+                        {[
+                          { l: `P: ${meal.protein}g`, c: Colors.accent },
+                          { l: `C: ${meal.carbs}g`,   c: Colors.bulk },
+                          { l: `F: ${meal.fat}g`,     c: '#A78BFA' },
+                        ].map(p => (
+                          <View key={p.l} style={[styles.calMacroBadge, { backgroundColor: `${p.c}18` }]}>
+                            <Text style={[styles.calMacroBadgeTxt, { color: p.c }]}>{p.l}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      {meal.prepTimeMinutes != null && (
+                        <View style={styles.calTimePill}>
+                          <Ionicons name="time-outline" size={11} color={Colors.textMuted} />
+                          <Text style={styles.calTimeTxt}>{meal.prepTimeMinutes} min</Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              });
+            })()}
+
             <View style={{ height: 80 }} />
           </ScrollView>
         </>
@@ -676,7 +747,7 @@ const styles = StyleSheet.create({
 
   // Day strip
   dayStrip:        { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.sm, gap: Spacing.sm },
-  dayPill:         { alignItems: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: Radius.lg, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, minWidth: 50 },
+  dayPill:         { alignItems: 'center', paddingHorizontal: 18, paddingVertical: 10, borderRadius: Radius.full, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, minWidth: 56 },
   dayPillActive:   { backgroundColor: Colors.primary, borderColor: Colors.primary },
   dayPillToday:    { borderColor: Colors.primary },
   dayNum:          { fontSize: 10, fontWeight: FontWeight.bold, color: Colors.textMuted },
@@ -693,6 +764,43 @@ const styles = StyleSheet.create({
   macroVal:        { fontSize: FontSize.lg, fontWeight: FontWeight.black },
   macroUnit:       { fontSize: 9, color: Colors.textMuted },
   macroLbl:        { fontSize: 9, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.3 },
+
+  // ── Calendar-style Recommended tab ────────────────────────────────────────
+  dayStripCentered:  { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.sm },
+  dayPillCentered:   { flex: 1, alignItems: 'center', paddingVertical: 10, marginHorizontal: 3, borderRadius: Radius.full, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border },
+  dayLblCentered:    { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.textSecondary },
+  recTypeStrip:      { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.sm, gap: Spacing.sm },
+  recTypeChip:       { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: Radius.full, backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border },
+  recTypeEmoji:      { fontSize: 13 },
+  recTypeText:       { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.semibold },
+  calHeader:         { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.sm },
+  calTitle:        { fontSize: FontSize.xxl, fontWeight: FontWeight.black, color: Colors.textPrimary },
+  calSubtitle:     { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+
+  // Macro summary card
+  calMacroCard:    { backgroundColor: Colors.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border, padding: Spacing.lg, marginBottom: Spacing.md },
+  calMacroTop:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
+  calMacroKcal:    { fontSize: 28, fontWeight: FontWeight.black, color: Colors.textPrimary },
+  calMacroKcalUnit:{ fontSize: FontSize.sm, fontWeight: FontWeight.regular, color: Colors.textMuted },
+  calMacroRight:   { flexDirection: 'row', gap: Spacing.sm },
+  calMacroPill:    { fontSize: FontSize.sm, fontWeight: FontWeight.bold },
+  calSegBar:       { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', gap: 2 },
+  calSegFill:      { borderRadius: 4 },
+
+  // Meal cards
+  calMealCard:     { backgroundColor: Colors.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border, padding: Spacing.lg, marginBottom: Spacing.sm },
+  calMealTop:      { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
+  calMealIcon:     { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  calMealType:     { fontSize: FontSize.xs, fontWeight: FontWeight.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
+  calMealName:     { fontSize: FontSize.md, fontWeight: FontWeight.black, color: Colors.textPrimary, marginTop: 1 },
+  calMealKcal:     { fontSize: FontSize.md, fontWeight: FontWeight.black },
+  calMealDesc:     { fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 18, marginBottom: Spacing.sm },
+  calMealBottom:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  calMealMacros:   { flexDirection: 'row', gap: 6 },
+  calMacroBadge:   { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full },
+  calMacroBadgeTxt:{ fontSize: FontSize.xs, fontWeight: FontWeight.bold },
+  calTimePill:     { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  calTimeTxt:      { fontSize: FontSize.xs, color: Colors.textMuted },
 
   // Rec banner
   recBanner:       { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: `${Colors.primary}10`, borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.lg, borderWidth: 1, borderColor: `${Colors.primary}25` },
