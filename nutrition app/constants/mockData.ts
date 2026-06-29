@@ -1,0 +1,697 @@
+import { UserProfile, MealCalendar, WorkoutPlan } from '../types';
+
+// ─── Profile ──────────────────────────────────────────────────────────────────
+
+export const MOCK_PROFILE: UserProfile = {
+  id: 'mock-user-1',
+  name: 'Alex',
+  age: 26,
+  sex: 'male',
+  heightCm: 180,
+  weightKg: 82,
+  activityLevel: 'moderatelyActive',
+  goal: 'cut',
+  cookingTimeMinutes: 30,
+  allergies: ['Dairy'],
+  intolerances: ['Lactose'],
+  onboardingComplete: true,
+  createdAt: new Date().toISOString(),
+};
+
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+function dateOffset(days: number): string {
+  const d = new Date();
+  const day = d.getDay();
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  monday.setDate(monday.getDate() + days);
+  return monday.toISOString().split('T')[0];
+}
+
+// ─── Meal Calendar (7 days) ───────────────────────────────────────────────────
+
+export const MOCK_CALENDAR: MealCalendar = {
+  weekStartDate: dateOffset(0),
+  days: [
+    // ── Monday ──
+    {
+      date: dateOffset(0),
+      totalCalories: 1850,
+      totalProtein: 168,
+      totalCarbs: 165,
+      totalFat: 52,
+      meals: [
+        {
+          id: 'm-mon-1',
+          type: 'breakfast',
+          name: 'Scrambled Egg Whites & Oats',
+          description: 'High-protein scrambled whites on the side of creamy rolled oats with banana slices.',
+          prepTimeMinutes: 10,
+          calories: 420,
+          protein: 38,
+          carbs: 48,
+          fat: 8,
+          ingredients: [
+            { name: 'Egg whites', amount: '6 large' },
+            { name: 'Rolled oats', amount: '80g' },
+            { name: 'Banana', amount: '1 medium' },
+            { name: 'Almond milk', amount: '150ml' },
+            { name: 'Cinnamon', amount: '½ tsp' },
+          ],
+          instructions: [
+            'Cook oats in almond milk for 4 minutes, stir in cinnamon.',
+            'Whisk egg whites with a pinch of salt and scramble on medium heat.',
+            'Slice banana over oats and serve alongside eggs.',
+          ],
+        },
+        {
+          id: 'm-mon-2',
+          type: 'lunch',
+          name: 'Grilled Chicken & Quinoa Bowl',
+          description: 'Lean grilled chicken breast over fluffy quinoa with roasted peppers and cucumber.',
+          prepTimeMinutes: 25,
+          calories: 580,
+          protein: 52,
+          carbs: 54,
+          fat: 14,
+          ingredients: [
+            { name: 'Chicken breast', amount: '200g' },
+            { name: 'Quinoa', amount: '90g dry' },
+            { name: 'Red bell pepper', amount: '1 large' },
+            { name: 'Cucumber', amount: '½' },
+            { name: 'Lemon juice', amount: '1 tbsp' },
+            { name: 'Olive oil', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Cook quinoa per packet instructions.',
+            'Season chicken with salt, pepper, and lemon juice; grill 6 min each side.',
+            'Slice peppers and cucumber; assemble bowl and drizzle with olive oil.',
+          ],
+        },
+        {
+          id: 'm-mon-3',
+          type: 'snack',
+          name: 'Rice Cakes & Almond Butter',
+          description: 'Light crunch with healthy fats to keep you fuelled between meals.',
+          prepTimeMinutes: 2,
+          calories: 210,
+          protein: 6,
+          carbs: 24,
+          fat: 10,
+          ingredients: [
+            { name: 'Rice cakes', amount: '3 plain' },
+            { name: 'Almond butter', amount: '1.5 tbsp' },
+          ],
+          instructions: ['Spread almond butter evenly over rice cakes. Serve immediately.'],
+        },
+        {
+          id: 'm-mon-4',
+          type: 'dinner',
+          name: 'Salmon & Roasted Asparagus',
+          description: 'Omega-3 rich salmon fillet with crispy asparagus and lemon.',
+          prepTimeMinutes: 25,
+          calories: 640,
+          protein: 52,
+          carbs: 18,
+          fat: 38,
+          ingredients: [
+            { name: 'Salmon fillet', amount: '200g' },
+            { name: 'Asparagus', amount: '200g' },
+            { name: 'Olive oil', amount: '1 tbsp' },
+            { name: 'Garlic', amount: '2 cloves' },
+            { name: 'Lemon', amount: '½' },
+          ],
+          instructions: [
+            'Preheat oven to 200°C.',
+            'Toss asparagus in olive oil and garlic, roast 12 min.',
+            'Pan-sear salmon skin-side down 4 min, flip and finish in oven 6 min.',
+            'Squeeze lemon over everything before serving.',
+          ],
+        },
+      ],
+    },
+    // ── Tuesday ──
+    {
+      date: dateOffset(1),
+      totalCalories: 1820,
+      totalProtein: 162,
+      totalCarbs: 170,
+      totalFat: 48,
+      meals: [
+        {
+          id: 'm-tue-1',
+          type: 'breakfast',
+          name: 'Greek Yoghurt Parfait',
+          description: 'Layered non-dairy yoghurt with granola, mixed berries, and a drizzle of honey.',
+          prepTimeMinutes: 5,
+          calories: 380,
+          protein: 28,
+          carbs: 52,
+          fat: 6,
+          ingredients: [
+            { name: 'Coconut yoghurt', amount: '200g' },
+            { name: 'Granola (dairy-free)', amount: '40g' },
+            { name: 'Mixed berries', amount: '80g' },
+            { name: 'Honey', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Layer yoghurt, granola, and berries in a glass or bowl.',
+            'Drizzle with honey and serve immediately.',
+          ],
+        },
+        {
+          id: 'm-tue-2',
+          type: 'lunch',
+          name: 'Turkey & Avocado Wrap',
+          description: 'High-protein turkey strips with creamy avocado in a wholegrain wrap.',
+          prepTimeMinutes: 10,
+          calories: 520,
+          protein: 44,
+          carbs: 42,
+          fat: 18,
+          ingredients: [
+            { name: 'Turkey breast slices', amount: '150g' },
+            { name: 'Wholegrain wrap', amount: '1 large' },
+            { name: 'Avocado', amount: '½' },
+            { name: 'Spinach', amount: '30g' },
+            { name: 'Tomato', amount: '1 medium' },
+            { name: 'Mustard', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Spread mustard over wrap.',
+            'Layer spinach, turkey, sliced tomato, and mashed avocado.',
+            'Roll tightly and cut in half.',
+          ],
+        },
+        {
+          id: 'm-tue-3',
+          type: 'snack',
+          name: 'Apple & Peanut Butter',
+          description: 'Simple, filling snack with natural sugars and healthy fats.',
+          prepTimeMinutes: 2,
+          calories: 220,
+          protein: 7,
+          carbs: 28,
+          fat: 9,
+          ingredients: [
+            { name: 'Apple', amount: '1 large' },
+            { name: 'Peanut butter', amount: '1.5 tbsp' },
+          ],
+          instructions: ['Slice apple and serve with peanut butter for dipping.'],
+        },
+        {
+          id: 'm-tue-4',
+          type: 'dinner',
+          name: 'Beef Stir-Fry with Brown Rice',
+          description: 'Lean beef strips with colourful vegetables in a light soy-ginger sauce.',
+          prepTimeMinutes: 20,
+          calories: 700,
+          protein: 54,
+          carbs: 62,
+          fat: 22,
+          ingredients: [
+            { name: 'Lean beef strips', amount: '180g' },
+            { name: 'Brown rice', amount: '80g dry' },
+            { name: 'Broccoli', amount: '100g' },
+            { name: 'Carrot', amount: '1 medium' },
+            { name: 'Soy sauce (low sodium)', amount: '2 tbsp' },
+            { name: 'Ginger', amount: '1 tsp grated' },
+            { name: 'Sesame oil', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Cook brown rice per packet instructions.',
+            'Stir-fry beef in sesame oil 3 min; add vegetables, ginger, and soy sauce.',
+            'Cook a further 5 min until vegetables are tender-crisp.',
+            'Serve over rice.',
+          ],
+        },
+      ],
+    },
+    // ── Wednesday ──
+    {
+      date: dateOffset(2),
+      totalCalories: 1800,
+      totalProtein: 155,
+      totalCarbs: 175,
+      totalFat: 46,
+      meals: [
+        {
+          id: 'm-wed-1', type: 'breakfast',
+          name: 'Banana Protein Pancakes',
+          description: 'Two-ingredient pancakes blended from banana and oats — naturally sweet and filling.',
+          prepTimeMinutes: 12, calories: 400, protein: 32, carbs: 56, fat: 6,
+          ingredients: [
+            { name: 'Banana', amount: '1 large' },
+            { name: 'Oats', amount: '60g' },
+            { name: 'Eggs', amount: '2' },
+            { name: 'Vanilla extract', amount: '½ tsp' },
+          ],
+          instructions: [
+            'Blend all ingredients until smooth.',
+            'Cook small pancakes on a non-stick pan over medium heat, 2 min per side.',
+            'Top with fresh berries.',
+          ],
+        },
+        {
+          id: 'm-wed-2', type: 'lunch',
+          name: 'Tuna Salad Bowl',
+          description: 'Protein-packed tuna over a bed of mixed greens, cherry tomatoes, and olives.',
+          prepTimeMinutes: 8, calories: 450, protein: 48, carbs: 22, fat: 18,
+          ingredients: [
+            { name: 'Canned tuna in water', amount: '160g drained' },
+            { name: 'Mixed greens', amount: '80g' },
+            { name: 'Cherry tomatoes', amount: '100g' },
+            { name: 'Black olives', amount: '30g' },
+            { name: 'Red onion', amount: '¼ small' },
+            { name: 'Olive oil', amount: '1 tbsp' },
+            { name: 'Lemon juice', amount: '1 tbsp' },
+          ],
+          instructions: [
+            'Toss greens, tomatoes, olives, and onion together.',
+            'Top with tuna and drizzle with olive oil and lemon juice.',
+          ],
+        },
+        {
+          id: 'm-wed-3', type: 'snack',
+          name: 'Handful of Mixed Nuts',
+          description: 'Heart-healthy fats and a light protein boost.',
+          prepTimeMinutes: 1, calories: 180, protein: 5, carbs: 8, fat: 15,
+          ingredients: [{ name: 'Mixed nuts (unsalted)', amount: '30g' }],
+          instructions: ['Portion out into a small bowl and enjoy.'],
+        },
+        {
+          id: 'm-wed-4', type: 'dinner',
+          name: 'Chicken Thighs & Sweet Potato Mash',
+          description: 'Juicy baked chicken thighs with creamy sweet potato mash and steamed green beans.',
+          prepTimeMinutes: 30, calories: 770, protein: 58, carbs: 68, fat: 22,
+          ingredients: [
+            { name: 'Chicken thighs (skinless)', amount: '220g' },
+            { name: 'Sweet potato', amount: '200g' },
+            { name: 'Green beans', amount: '120g' },
+            { name: 'Olive oil', amount: '1 tbsp' },
+            { name: 'Paprika', amount: '1 tsp' },
+            { name: 'Garlic powder', amount: '½ tsp' },
+          ],
+          instructions: [
+            'Preheat oven to 190°C. Season chicken with paprika and garlic; bake 25 min.',
+            'Boil sweet potato until soft; mash with a splash of almond milk.',
+            'Steam green beans 5 min.',
+            'Plate and serve.',
+          ],
+        },
+      ],
+    },
+    // ── Thursday ──
+    {
+      date: dateOffset(3),
+      totalCalories: 1870,
+      totalProtein: 165,
+      totalCarbs: 168,
+      totalFat: 54,
+      meals: [
+        {
+          id: 'm-thu-1', type: 'breakfast',
+          name: 'Veggie Omelette',
+          description: 'Three-egg omelette stuffed with spinach, mushrooms, and tomato.',
+          prepTimeMinutes: 10, calories: 360, protein: 30, carbs: 14, fat: 20,
+          ingredients: [
+            { name: 'Eggs', amount: '3 whole' },
+            { name: 'Spinach', amount: '40g' },
+            { name: 'Mushrooms', amount: '60g' },
+            { name: 'Cherry tomatoes', amount: '60g' },
+            { name: 'Olive oil', amount: '½ tsp' },
+          ],
+          instructions: [
+            'Sauté vegetables in olive oil until soft.',
+            'Beat eggs, pour over vegetables in pan.',
+            'Cook until set, fold in half, and serve.',
+          ],
+        },
+        {
+          id: 'm-thu-2', type: 'lunch',
+          name: 'Lentil & Vegetable Soup',
+          description: 'Hearty red lentil soup with carrots, celery, and warming spices.',
+          prepTimeMinutes: 25, calories: 480, protein: 28, carbs: 72, fat: 8,
+          ingredients: [
+            { name: 'Red lentils', amount: '100g dry' },
+            { name: 'Carrot', amount: '1 large' },
+            { name: 'Celery', amount: '2 stalks' },
+            { name: 'Onion', amount: '1 medium' },
+            { name: 'Vegetable stock', amount: '700ml' },
+            { name: 'Cumin', amount: '1 tsp' },
+            { name: 'Turmeric', amount: '½ tsp' },
+          ],
+          instructions: [
+            'Sauté onion, carrot, and celery 5 min.',
+            'Add lentils, spices, and stock; simmer 20 min.',
+            'Blend half the soup for a creamy texture, stir together.',
+          ],
+        },
+        {
+          id: 'm-thu-3', type: 'snack',
+          name: 'Protein Shake',
+          description: 'Quick post-workout shake with banana for carbs.',
+          prepTimeMinutes: 2, calories: 280, protein: 30, carbs: 30, fat: 4,
+          ingredients: [
+            { name: 'Dairy-free protein powder', amount: '1 scoop (30g)' },
+            { name: 'Banana', amount: '1 small' },
+            { name: 'Almond milk', amount: '250ml' },
+          ],
+          instructions: ['Blend all ingredients together until smooth.'],
+        },
+        {
+          id: 'm-thu-4', type: 'dinner',
+          name: 'Prawn & Zucchini Noodles',
+          description: 'Light and fresh zucchini noodles with garlic prawns in a chilli-lemon dressing.',
+          prepTimeMinutes: 15, calories: 520, protein: 48, carbs: 22, fat: 24,
+          ingredients: [
+            { name: 'King prawns', amount: '200g' },
+            { name: 'Zucchini', amount: '2 large' },
+            { name: 'Garlic', amount: '3 cloves' },
+            { name: 'Chilli flakes', amount: '½ tsp' },
+            { name: 'Olive oil', amount: '1 tbsp' },
+            { name: 'Lemon', amount: '1' },
+          ],
+          instructions: [
+            'Spiralise zucchini into noodles.',
+            'Sauté garlic and chilli in olive oil 1 min; add prawns and cook 4 min.',
+            'Toss in zucchini noodles and lemon juice; cook 2 min and serve.',
+          ],
+        },
+      ],
+    },
+    // ── Friday ──
+    {
+      date: dateOffset(4),
+      totalCalories: 1790,
+      totalProtein: 158,
+      totalCarbs: 160,
+      totalFat: 50,
+      meals: [
+        {
+          id: 'm-fri-1', type: 'breakfast',
+          name: 'Overnight Oats',
+          description: 'Prep the night before — oats soaked in almond milk with chia seeds and berries.',
+          prepTimeMinutes: 5, calories: 390, protein: 18, carbs: 62, fat: 8,
+          ingredients: [
+            { name: 'Rolled oats', amount: '80g' },
+            { name: 'Almond milk', amount: '200ml' },
+            { name: 'Chia seeds', amount: '1 tbsp' },
+            { name: 'Mixed berries', amount: '80g' },
+            { name: 'Maple syrup', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Mix oats, almond milk, and chia seeds in a jar.',
+            'Refrigerate overnight.',
+            'Top with berries and maple syrup in the morning.',
+          ],
+        },
+        {
+          id: 'm-fri-2', type: 'lunch',
+          name: 'Chicken Caesar Salad',
+          description: 'Crispy romaine with grilled chicken, croutons, and a light Caesar dressing.',
+          prepTimeMinutes: 15, calories: 520, protein: 46, carbs: 30, fat: 20,
+          ingredients: [
+            { name: 'Chicken breast', amount: '160g' },
+            { name: 'Romaine lettuce', amount: '100g' },
+            { name: 'Croutons (dairy-free)', amount: '30g' },
+            { name: 'Caesar dressing (dairy-free)', amount: '2 tbsp' },
+            { name: 'Lemon juice', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Grill chicken 6 min each side; slice.',
+            'Toss lettuce with dressing and lemon juice.',
+            'Top with chicken and croutons.',
+          ],
+        },
+        {
+          id: 'm-fri-3', type: 'snack',
+          name: 'Edamame with Sea Salt',
+          description: 'Plant-based protein hit — simple and satisfying.',
+          prepTimeMinutes: 5, calories: 160, protein: 14, carbs: 12, fat: 6,
+          ingredients: [{ name: 'Edamame (frozen, shelled)', amount: '100g' }],
+          instructions: ['Boil edamame 4 min, drain, and season with sea salt.'],
+        },
+        {
+          id: 'm-fri-4', type: 'dinner',
+          name: 'Baked Cod & Roasted Veg',
+          description: 'Flaky white fish with a medley of roasted Mediterranean vegetables.',
+          prepTimeMinutes: 28, calories: 560, protein: 52, carbs: 44, fat: 16,
+          ingredients: [
+            { name: 'Cod fillet', amount: '200g' },
+            { name: 'Courgette', amount: '1 medium' },
+            { name: 'Cherry tomatoes', amount: '100g' },
+            { name: 'Red onion', amount: '1 small' },
+            { name: 'Olive oil', amount: '1 tbsp' },
+            { name: 'Oregano', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Preheat oven to 200°C. Toss vegetables in oil and oregano; roast 15 min.',
+            'Add cod to the tray, season, and bake a further 12 min.',
+          ],
+        },
+      ],
+    },
+    // ── Saturday ──
+    {
+      date: dateOffset(5),
+      totalCalories: 1920,
+      totalProtein: 162,
+      totalCarbs: 186,
+      totalFat: 52,
+      meals: [
+        {
+          id: 'm-sat-1', type: 'breakfast',
+          name: 'Smashed Avocado on Sourdough',
+          description: 'Weekend treat — creamy avocado on toasted sourdough with poached eggs.',
+          prepTimeMinutes: 12, calories: 480, protein: 24, carbs: 48, fat: 22,
+          ingredients: [
+            { name: 'Sourdough bread', amount: '2 slices' },
+            { name: 'Avocado', amount: '1 whole' },
+            { name: 'Eggs', amount: '2' },
+            { name: 'Chilli flakes', amount: '¼ tsp' },
+            { name: 'Lemon juice', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Toast sourdough. Mash avocado with lemon and chilli.',
+            'Poach eggs 3 min. Spread avocado over toast, top with eggs.',
+          ],
+        },
+        {
+          id: 'm-sat-2', type: 'lunch',
+          name: 'Prawn Tacos',
+          description: 'Three soft corn tacos loaded with seasoned prawns, slaw, and salsa.',
+          prepTimeMinutes: 20, calories: 580, protein: 42, carbs: 64, fat: 16,
+          ingredients: [
+            { name: 'King prawns', amount: '180g' },
+            { name: 'Corn tortillas', amount: '3 small' },
+            { name: 'Red cabbage', amount: '80g shredded' },
+            { name: 'Mango salsa', amount: '4 tbsp' },
+            { name: 'Lime', amount: '1' },
+            { name: 'Smoked paprika', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Season prawns with paprika; cook in pan 3 min.',
+            'Warm tortillas. Fill with slaw, prawns, and salsa.',
+            'Squeeze lime over the top.',
+          ],
+        },
+        {
+          id: 'm-sat-3', type: 'snack',
+          name: 'Fruit & Seed Bowl',
+          description: 'Naturally sweet energy hit with fibre and healthy fats.',
+          prepTimeMinutes: 3, calories: 220, protein: 5, carbs: 38, fat: 7,
+          ingredients: [
+            { name: 'Melon', amount: '150g' },
+            { name: 'Kiwi', amount: '2' },
+            { name: 'Pumpkin seeds', amount: '15g' },
+          ],
+          instructions: ['Cube fruit, combine in a bowl, and top with seeds.'],
+        },
+        {
+          id: 'm-sat-4', type: 'dinner',
+          name: 'Grilled Steak & Chimichurri',
+          description: 'Lean sirloin steak with a vibrant herb chimichurri and grilled corn.',
+          prepTimeMinutes: 20, calories: 760, protein: 58, carbs: 40, fat: 38,
+          ingredients: [
+            { name: 'Sirloin steak', amount: '200g' },
+            { name: 'Corn on the cob', amount: '1' },
+            { name: 'Fresh parsley', amount: '20g' },
+            { name: 'Garlic', amount: '2 cloves' },
+            { name: 'Olive oil', amount: '2 tbsp' },
+            { name: 'Red wine vinegar', amount: '1 tbsp' },
+          ],
+          instructions: [
+            'Blend parsley, garlic, olive oil, and vinegar into chimichurri.',
+            'Grill steak 3–4 min each side for medium; rest 3 min.',
+            'Grill corn alongside. Drizzle steak with chimichurri.',
+          ],
+        },
+      ],
+    },
+    // ── Sunday ──
+    {
+      date: dateOffset(6),
+      totalCalories: 1780,
+      totalProtein: 150,
+      totalCarbs: 162,
+      totalFat: 50,
+      meals: [
+        {
+          id: 'm-sun-1', type: 'breakfast',
+          name: 'Smoothie Bowl',
+          description: 'Thick blended acai base with granola, sliced banana, and coconut flakes.',
+          prepTimeMinutes: 8, calories: 420, protein: 18, carbs: 68, fat: 10,
+          ingredients: [
+            { name: 'Frozen mixed berries', amount: '150g' },
+            { name: 'Banana', amount: '1 frozen' },
+            { name: 'Dairy-free protein powder', amount: '½ scoop' },
+            { name: 'Granola', amount: '30g' },
+            { name: 'Coconut flakes', amount: '10g' },
+          ],
+          instructions: [
+            'Blend berries and frozen banana with a splash of almond milk until thick.',
+            'Pour into bowl; top with granola and coconut flakes.',
+          ],
+        },
+        {
+          id: 'm-sun-2', type: 'lunch',
+          name: 'Stuffed Bell Peppers',
+          description: 'Colourful peppers filled with turkey mince, rice, and herbs, baked to perfection.',
+          prepTimeMinutes: 30, calories: 540, protein: 42, carbs: 56, fat: 14,
+          ingredients: [
+            { name: 'Bell peppers', amount: '2 large' },
+            { name: 'Turkey mince', amount: '180g' },
+            { name: 'Brown rice', amount: '60g cooked' },
+            { name: 'Tomato passata', amount: '100ml' },
+            { name: 'Onion', amount: '½' },
+            { name: 'Mixed herbs', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Preheat oven to 180°C. Halve peppers and remove seeds.',
+            'Brown turkey with onion; mix in rice, passata, and herbs.',
+            'Fill peppers and bake 20 min.',
+          ],
+        },
+        {
+          id: 'm-sun-3', type: 'snack',
+          name: 'Hummus & Veggie Sticks',
+          description: 'Classic light snack — crunchy fresh veg with creamy hummus.',
+          prepTimeMinutes: 3, calories: 180, protein: 7, carbs: 20, fat: 8,
+          ingredients: [
+            { name: 'Hummus', amount: '60g' },
+            { name: 'Carrot sticks', amount: '80g' },
+            { name: 'Cucumber sticks', amount: '80g' },
+          ],
+          instructions: ['Slice vegetables and serve alongside hummus.'],
+        },
+        {
+          id: 'm-sun-4', type: 'dinner',
+          name: 'Chicken & Vegetable Curry',
+          description: 'Fragrant coconut-free chicken curry with chickpeas served over jasmine rice.',
+          prepTimeMinutes: 28, calories: 680, protein: 52, carbs: 60, fat: 22,
+          ingredients: [
+            { name: 'Chicken breast', amount: '200g diced' },
+            { name: 'Chickpeas', amount: '100g drained' },
+            { name: 'Jasmine rice', amount: '80g dry' },
+            { name: 'Tomato passata', amount: '200ml' },
+            { name: 'Onion', amount: '1 medium' },
+            { name: 'Curry powder', amount: '2 tsp' },
+            { name: 'Ginger', amount: '1 tsp' },
+          ],
+          instructions: [
+            'Cook rice per packet. Sauté onion 5 min.',
+            'Add chicken and brown 4 min; add curry powder and ginger, cook 1 min.',
+            'Add passata and chickpeas; simmer 15 min.',
+            'Serve over rice.',
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+// ─── Workout Plan ─────────────────────────────────────────────────────────────
+
+export const MOCK_WORKOUT_PLAN: WorkoutPlan = {
+  id: 'mock-plan-1',
+  goal: 'cut',
+  weeksTotal: 4,
+  days: [
+    {
+      dayLabel: 'Monday — Push',
+      focus: 'Chest & Triceps',
+      durationMinutes: 55,
+      exercises: [
+        { id: 'e1', name: 'Barbell Bench Press', muscleGroups: ['chest'], sets: 4, reps: '10-12', restSeconds: 60, notes: 'Control the eccentric phase' },
+        { id: 'e2', name: 'Incline Dumbbell Press', muscleGroups: ['chest', 'shoulders'], sets: 3, reps: '12', restSeconds: 60 },
+        { id: 'e3', name: 'Cable Flyes', muscleGroups: ['chest'], sets: 3, reps: '15', restSeconds: 45 },
+        { id: 'e4', name: 'Tricep Rope Pushdown', muscleGroups: ['triceps'], sets: 3, reps: '12-15', restSeconds: 45 },
+        { id: 'e5', name: 'Overhead Tricep Extension', muscleGroups: ['triceps'], sets: 3, reps: '12', restSeconds: 45 },
+      ],
+    },
+    {
+      dayLabel: 'Tuesday — Pull',
+      focus: 'Back & Biceps',
+      durationMinutes: 55,
+      exercises: [
+        { id: 'e6', name: 'Pull-Ups', muscleGroups: ['back', 'biceps'], sets: 4, reps: '8-10', restSeconds: 90, notes: 'Full range of motion' },
+        { id: 'e7', name: 'Barbell Row', muscleGroups: ['back'], sets: 4, reps: '10', restSeconds: 60 },
+        { id: 'e8', name: 'Lat Pulldown', muscleGroups: ['back'], sets: 3, reps: '12', restSeconds: 60 },
+        { id: 'e9', name: 'Dumbbell Curl', muscleGroups: ['biceps'], sets: 3, reps: '12', restSeconds: 45 },
+        { id: 'e10', name: 'Hammer Curl', muscleGroups: ['biceps'], sets: 3, reps: '12', restSeconds: 45 },
+      ],
+    },
+    {
+      dayLabel: 'Wednesday — Legs',
+      focus: 'Quads, Hamstrings & Glutes',
+      durationMinutes: 65,
+      exercises: [
+        { id: 'e11', name: 'Barbell Squat', muscleGroups: ['legs', 'glutes'], sets: 4, reps: '10', restSeconds: 90, notes: 'Keep chest up, knees tracking toes' },
+        { id: 'e12', name: 'Romanian Deadlift', muscleGroups: ['legs', 'glutes'], sets: 4, reps: '10-12', restSeconds: 75 },
+        { id: 'e13', name: 'Leg Press', muscleGroups: ['legs'], sets: 3, reps: '15', restSeconds: 60 },
+        { id: 'e14', name: 'Walking Lunges', muscleGroups: ['legs', 'glutes'], sets: 3, reps: '12 each leg', restSeconds: 60 },
+        { id: 'e15', name: 'Leg Curl', muscleGroups: ['legs'], sets: 3, reps: '12', restSeconds: 45 },
+        { id: 'e16', name: 'Calf Raises', muscleGroups: ['legs'], sets: 4, reps: '20', restSeconds: 30 },
+      ],
+    },
+    {
+      dayLabel: 'Thursday — Rest',
+      focus: 'Active Recovery',
+      durationMinutes: 30,
+      exercises: [
+        { id: 'e17', name: '20-min Light Walk', muscleGroups: ['cardio'], sets: 1, reps: '20 min', restSeconds: 0, notes: 'Keep heart rate low — this is recovery' },
+        { id: 'e18', name: 'Full Body Stretch', muscleGroups: ['core'], sets: 1, reps: '10 min', restSeconds: 0 },
+      ],
+    },
+    {
+      dayLabel: 'Friday — Shoulders',
+      focus: 'Shoulders & Core',
+      durationMinutes: 50,
+      exercises: [
+        { id: 'e19', name: 'Seated Dumbbell Press', muscleGroups: ['shoulders'], sets: 4, reps: '10-12', restSeconds: 60 },
+        { id: 'e20', name: 'Lateral Raises', muscleGroups: ['shoulders'], sets: 4, reps: '15', restSeconds: 45, notes: 'Light weight, strict form' },
+        { id: 'e21', name: 'Face Pulls', muscleGroups: ['shoulders', 'back'], sets: 3, reps: '15', restSeconds: 45 },
+        { id: 'e22', name: 'Plank', muscleGroups: ['core'], sets: 3, reps: '45s', restSeconds: 30 },
+        { id: 'e23', name: 'Cable Woodchop', muscleGroups: ['core'], sets: 3, reps: '12 each side', restSeconds: 30 },
+      ],
+    },
+    {
+      dayLabel: 'Saturday — Cardio',
+      focus: 'Fat Burn Circuit',
+      durationMinutes: 45,
+      exercises: [
+        { id: 'e24', name: 'Treadmill HIIT', muscleGroups: ['cardio'], sets: 8, reps: '30s sprint / 90s walk', restSeconds: 0, notes: '8 rounds' },
+        { id: 'e25', name: 'Burpees', muscleGroups: ['cardio', 'core'], sets: 3, reps: '15', restSeconds: 45 },
+        { id: 'e26', name: 'Jump Rope', muscleGroups: ['cardio'], sets: 3, reps: '2 min', restSeconds: 60 },
+      ],
+    },
+    {
+      dayLabel: 'Sunday — Rest',
+      focus: 'Full Rest Day',
+      durationMinutes: 0,
+      exercises: [],
+    },
+  ],
+};
