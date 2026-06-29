@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'rea
 import { router } from 'expo-router';
 import { Colors, FontSize, FontWeight, Spacing } from '../../constants/theme';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { useNutritionStore } from '../../store/nutritionStore';
 import { useWorkoutStore } from '../../store/workoutStore';
 import { useRecommendationsStore } from '../../store/recommendationsStore';
 import { useAuthStore } from '../../store/authStore';
@@ -12,13 +11,10 @@ import { recommendMeals } from '../../services/recommendation/mealRecommender';
 import { calcDailyTargets } from '../../services/recommendation/calorieCalculator';
 import {
   saveProfile,
-  saveMealCalendar,
   saveWorkoutPlan,
   saveRecommendations,
   saveDailyTargets,
 } from '../../services/supabase/database';
-import { generateMealPlan } from '../../services/ai/mealPlanService';
-import { generateWorkoutPlan } from '../../services/ai/workoutService';
 import { generateLocalWorkoutPlan } from '../../services/recommendation/workoutGenerator';
 
 const STEPS = [
@@ -35,7 +31,6 @@ export default function GeneratingScreen() {
   const [statusMsg, setStatusMsg] = useState('');
 
   const { draft, resetDraft }        = useOnboardingStore();
-  const { setCalendar }              = useNutritionStore();
   const { setPlan }                  = useWorkoutStore();
   const { setRecommendations }       = useRecommendationsStore();
   const { setProfile }               = useUserStore();
@@ -84,24 +79,6 @@ export default function GeneratingScreen() {
       const localPlan = generateLocalWorkoutPlan(fullProfile);
       setPlan(localPlan);
       await saveWorkoutPlan(uid, localPlan);
-
-      // 5. AI generation — optional enhancement, fails gracefully
-      setStatusMsg('');
-      try {
-        const [calendar, aiPlan] = await Promise.all([
-          generateMealPlan(fullProfile),
-          generateWorkoutPlan(fullProfile),
-        ]);
-        // AI workout plan replaces the local one if successful
-        await Promise.all([
-          saveMealCalendar(uid, calendar),
-          saveWorkoutPlan(uid, aiPlan),
-        ]);
-        setCalendar(calendar);
-        setPlan(aiPlan);
-      } catch (aiErr) {
-        console.warn('AI generation skipped — local plan is active:', aiErr);
-      }
 
       resetDraft();
       router.replace('/(tabs)/home');
