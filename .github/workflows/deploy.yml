@@ -29,7 +29,9 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_PUBLIC_STRIPE_PAYMENT_LINK: ${{ secrets.EXPO_PUBLIC_STRIPE_PAYMENT_LINK }}
-        run: npx --yes expo export --platform web
+        run: |
+          chmod +x ./node_modules/.bin/expo
+          ./node_modules/.bin/expo export --platform web
 
       - name: Disable Jekyll
         run: touch dist/.nojekyll
