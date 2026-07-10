@@ -1,8 +1,8 @@
 import { useLocalSearchParams, router } from 'expo-router';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Modal, TextInput, Alert, Vibration, Dimensions,
+  View, Text, StyleSheet, TouchableOpacity,
+  Animated, Dimensions, Alert, Vibration, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,11 +12,11 @@ import { useUserStore } from '../../store/userStore';
 import { useAuthStore } from '../../store/authStore';
 import { GOAL_META } from '../../constants/goalMeta';
 import { startWorkoutSession, endWorkoutSession } from '../../services/supabase/database';
-import type { WorkoutDay, Exercise } from '../../types';
+import type { Exercise } from '../../types';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
-// ── Muscle → colour ────────────────────────────────────────────────────────────
+// ─── Muscle colour map ────────────────────────────────────────────────────────
 const MUSCLE_COLORS: Record<string, string> = {
   chest: '#FF6B35', back: '#00E5FF', shoulders: '#FFB800', legs: '#7C4DFF',
   arms: '#00C853', core: '#FF4D4D', biceps: '#00C853', triceps: '#FF6B35',
@@ -26,101 +26,276 @@ const MUSCLE_COLORS: Record<string, string> = {
 };
 function muscleCol(m: string) { return MUSCLE_COLORS[m.toLowerCase()] ?? Colors.primary; }
 
-// ── Exercise name → illustrative emoji ────────────────────────────────────────
-const EX_EMOJI_MAP: [RegExp, string][] = [
-  [/bench|chest press|push.?up|fly/i,          '🏋️'],
-  [/squat|leg press|lunge|leg extension/i,      '🦵'],
-  [/deadlift|romanian|rdl|hip hinge/i,          '🏗️'],
-  [/pull.?up|chin.?up|lat pulldown/i,           '🤸'],
-  [/row|cable row|seated row/i,                 '🚣'],
-  [/shoulder press|overhead press|ohp/i,        '💪'],
-  [/curl|bicep/i,                               '💪'],
-  [/tricep|dip|pushdown|skull/i,                '🔱'],
-  [/plank|ab|core|crunch|sit.?up/i,             '🧘'],
-  [/run|sprint|jog|treadmill|cardio/i,          '🏃'],
-  [/bike|cycle|cycling/i,                       '🚴'],
-  [/jump|box jump|burpee|hiit/i,                '⚡'],
-  [/calf|calf raise/i,                          '🦶'],
-  [/face pull|rear delt/i,                      '🎯'],
-  [/lateral raise|side raise/i,                 '🦅'],
-  [/hip thrust|glute bridge/i,                  '🍑'],
-  [/leg curl|hamstring/i,                       '🦵'],
-  [/shrug|trap/i,                               '🗻'],
-  [/stretch|mobility|warm|cool/i,               '🧘'],
-  [/farmer|carry/i,                             '🧺'],
-];
-function exEmoji(name: string): string {
-  for (const [re, e] of EX_EMOJI_MAP) if (re.test(name)) return e;
-  return '🏋️';
+// ─── Exercise category ────────────────────────────────────────────────────────
+type ExCategory = 'press' | 'squat' | 'pull' | 'hinge' | 'curl' | 'core' | 'cardio' | 'shoulder';
+function getCategory(name: string): ExCategory {
+  if (/bench|chest press|push.?up|fly|dip|tricep/i.test(name)) return 'press';
+  if (/squat|lunge|leg press|leg extension/i.test(name))        return 'squat';
+  if (/deadlift|rdl|romanian|hip hinge|good morning/i.test(name)) return 'hinge';
+  if (/pull.?up|chin.?up|lat pulldown|row|pull.?down/i.test(name)) return 'pull';
+  if (/curl|bicep/i.test(name))                                  return 'curl';
+  if (/plank|ab|core|crunch|sit.?up|leg raise/i.test(name))     return 'core';
+  if (/run|sprint|jog|jump|burpee|cardio|bike|cycle/i.test(name)) return 'cardio';
+  if (/shoulder press|overhead|ohp|lateral raise|face pull|shrug/i.test(name)) return 'shoulder';
+  return 'press';
 }
 
-// ── Muscle group → body area emoji ────────────────────────────────────────────
-const MUSCLE_EMOJI: Record<string, string> = {
-  chest: '🫁', back: '🔙', 'upper back': '🔙', 'lower back': '🔙',
-  shoulders: '🦴', legs: '🦵', quads: '🦵', hamstrings: '🦵', calves: '🦶',
-  glutes: '🍑', arms: '💪', biceps: '💪', triceps: '💪', forearms: '🤜',
-  core: '🧘', abs: '🧘', 'hip flexors': '🦴',
-};
-function muscleEmoji(m: string) { return MUSCLE_EMOJI[m.toLowerCase()] ?? '🏋️'; }
+// ─── Animated Exercise Demo ────────────────────────────────────────────────────
+function ExerciseAnimation({ category, color }: { category: ExCategory; color: string }) {
+  const anim = useRef(new Animated.Value(0)).current;
 
-// ── Rep range → intensity label ────────────────────────────────────────────────
-function intensityFromReps(reps: string | number): { label: string; color: string; emoji: string } {
-  const n = parseInt(String(reps));
-  if (n <= 5)  return { label: 'Strength',    color: '#FF4D4D', emoji: '⚡' };
-  if (n <= 10) return { label: 'Hypertrophy', color: '#FF6B35', emoji: '💪' };
-  if (n <= 15) return { label: 'Endurance',   color: '#FFB800', emoji: '🏃' };
-  return         { label: 'Conditioning',  color: '#00C853', emoji: '🔥' };
+  useEffect(() => {
+    let loop: Animated.CompositeAnimation;
+    const duration = category === 'cardio' ? 400 : category === 'core' ? 1800 : 900;
+
+    loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration, useNativeDriver: true, easing: t => t < 0.5 ? 2*t*t : -1+(4-2*t)*t }),
+        Animated.timing(anim, { toValue: 0, duration, useNativeDriver: true, easing: t => t < 0.5 ? 2*t*t : -1+(4-2*t)*t }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [category]);
+
+  const UP   = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -38] });
+  const DOWN = anim.interpolate({ inputRange: [0, 1], outputRange: [0,  38] });
+  const ROT  = anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '30deg'] });
+  const RROT = anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-30deg'] });
+  const SCL  = anim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+  const LEAN = anim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-28deg'] });
+
+  const bg = `${color}18`;
+
+  // Shared body parts
+  const Head = <View style={[a.head, { backgroundColor: color }]} />;
+  const Torso = (style?: any) => <View style={[a.torso, { backgroundColor: `${color}CC` }, style]} />;
+
+  if (category === 'press') {
+    // Bench press: bar goes up and down from chest
+    return (
+      <View style={[a.scene, { backgroundColor: bg }]}>
+        {/* Bench */}
+        <View style={[a.bench, { backgroundColor: Colors.border }]} />
+        {/* Body lying */}
+        <View style={a.lyingBody}>
+          {Head}
+          <View style={[a.lyingTorso, { backgroundColor: `${color}CC` }]} />
+        </View>
+        {/* Bar moving up/down */}
+        <Animated.View style={[a.barWrap, { transform: [{ translateY: UP }] }]}>
+          <View style={[a.bar, { backgroundColor: Colors.textPrimary }]} />
+          <View style={[a.plate, { backgroundColor: color, left: -16 }]} />
+          <View style={[a.plate, { backgroundColor: color, right: -16 }]} />
+        </Animated.View>
+        <Text style={[a.label, { color }]}>Push up · Extend arms</Text>
+      </View>
+    );
+  }
+
+  if (category === 'squat') {
+    return (
+      <View style={[a.scene, { backgroundColor: bg }]}>
+        {/* Bar on shoulders */}
+        <Animated.View style={[a.squatFigure, { transform: [{ translateY: DOWN }] }]}>
+          <View style={[a.bar, { backgroundColor: Colors.textPrimary, marginBottom: 4 }]} />
+          <View style={[a.plate, { backgroundColor: color, position: 'absolute', left: -16, top: 0 }]} />
+          <View style={[a.plate, { backgroundColor: color, position: 'absolute', right: -16, top: 0 }]} />
+          {Head}
+          {Torso()}
+          {/* Legs */}
+          <View style={a.legsRow}>
+            <Animated.View style={[a.leg, { backgroundColor: `${color}AA`, transform: [{ rotate: anim.interpolate({ inputRange: [0,1], outputRange: ['0deg','40deg'] }) }], transformOrigin: 'top' }]} />
+            <Animated.View style={[a.leg, { backgroundColor: `${color}AA`, transform: [{ rotate: anim.interpolate({ inputRange: [0,1], outputRange: ['0deg','-40deg'] }) }], transformOrigin: 'top' }]} />
+          </View>
+        </Animated.View>
+        <Text style={[a.label, { color }]}>Drive through heels · Keep chest up</Text>
+      </View>
+    );
+  }
+
+  if (category === 'pull') {
+    return (
+      <View style={[a.scene, { backgroundColor: bg }]}>
+        {/* Pulldown bar at top */}
+        <View style={[a.pullBar, { backgroundColor: Colors.textPrimary }]} />
+        <View style={[a.plate, { backgroundColor: color, position: 'absolute', top: 28, left: width * 0.15 }]} />
+        <View style={[a.plate, { backgroundColor: color, position: 'absolute', top: 28, right: width * 0.15 }]} />
+        {/* Arms moving down */}
+        <Animated.View style={[a.pullFigure, { transform: [{ translateY: DOWN }] }]}>
+          <View style={a.armsUp}>
+            <Animated.View style={[a.arm, { backgroundColor: `${color}AA`, transform: [{ rotate: RROT }] }]} />
+            <Animated.View style={[a.arm, { backgroundColor: `${color}AA`, transform: [{ rotate: ROT }] }]} />
+          </View>
+          {Head}
+          {Torso()}
+        </Animated.View>
+        <Text style={[a.label, { color }]}>Pull elbows down · Squeeze lats</Text>
+      </View>
+    );
+  }
+
+  if (category === 'hinge') {
+    return (
+      <View style={[a.scene, { backgroundColor: bg }]}>
+        <Animated.View style={[a.hingeFigure, { transform: [{ rotate: LEAN }], transformOrigin: 'bottom center' }]}>
+          {Head}
+          {Torso({ height: 70 })}
+          <View style={[a.bar, { backgroundColor: Colors.textPrimary, marginTop: 4 }]} />
+          <View style={[a.plate, { backgroundColor: color, position: 'absolute', bottom: 0, left: -16 }]} />
+          <View style={[a.plate, { backgroundColor: color, position: 'absolute', bottom: 0, right: -16 }]} />
+        </Animated.View>
+        <View style={[a.floor, { backgroundColor: Colors.border }]} />
+        <Text style={[a.label, { color }]}>Hinge at hips · Neutral spine</Text>
+      </View>
+    );
+  }
+
+  if (category === 'curl') {
+    return (
+      <View style={[a.scene, { backgroundColor: bg }]}>
+        {Head}
+        {Torso()}
+        {/* Arms curling */}
+        <View style={a.curlArms}>
+          <Animated.View style={[a.forearm, { backgroundColor: `${color}AA`, transform: [{ rotate: anim.interpolate({ inputRange: [0,1], outputRange: ['0deg','-110deg'] }) }], transformOrigin: 'top' }]} />
+          <Animated.View style={[a.forearm, { backgroundColor: `${color}AA`, transform: [{ rotate: anim.interpolate({ inputRange: [0,1], outputRange: ['0deg','110deg'] }) }], transformOrigin: 'top' }]} />
+        </View>
+        <Text style={[a.label, { color }]}>Curl up · Squeeze bicep · Lower slow</Text>
+      </View>
+    );
+  }
+
+  if (category === 'core') {
+    return (
+      <View style={[a.scene, { backgroundColor: bg }]}>
+        <Animated.View style={{ transform: [{ scale: SCL }], alignItems: 'center' }}>
+          {/* Plank position */}
+          <View style={[a.plankBody, { backgroundColor: `${color}CC` }]}>
+            <View style={[a.head, { backgroundColor: color, position: 'absolute', right: -22, top: -10 }]} />
+          </View>
+          <View style={a.plankArms}>
+            <View style={[a.plankArm, { backgroundColor: `${color}AA` }]} />
+            <View style={[a.plankArm, { backgroundColor: `${color}AA` }]} />
+          </View>
+        </Animated.View>
+        <View style={[a.floor, { backgroundColor: Colors.border }]} />
+        <Text style={[a.label, { color }]}>Brace core · Keep hips level</Text>
+      </View>
+    );
+  }
+
+  if (category === 'cardio') {
+    return (
+      <View style={[a.scene, { backgroundColor: bg }]}>
+        <Animated.View style={[a.runFigure, { transform: [{ translateY: UP }] }]}>
+          {Head}
+          {Torso({ transform: [{ rotate: '5deg' }] })}
+          <View style={a.runLegs}>
+            <Animated.View style={[a.leg, { backgroundColor: `${color}AA`, transform: [{ rotate: ROT }] }]} />
+            <Animated.View style={[a.leg, { backgroundColor: `${color}AA`, transform: [{ rotate: RROT }] }]} />
+          </View>
+        </Animated.View>
+        <View style={[a.floor, { backgroundColor: Colors.border }]} />
+        <Text style={[a.label, { color }]}>Keep pace · Breathe steady</Text>
+      </View>
+    );
+  }
+
+  // shoulder
+  return (
+    <View style={[a.scene, { backgroundColor: bg }]}>
+      {Head}
+      {Torso()}
+      <View style={a.shoulderArms}>
+        <Animated.View style={[a.arm, { backgroundColor: `${color}AA`, transform: [{ rotate: anim.interpolate({ inputRange: [0,1], outputRange: ['-20deg','-160deg'] }) }], transformOrigin: 'top' }]} />
+        <Animated.View style={[a.arm, { backgroundColor: `${color}AA`, transform: [{ rotate: anim.interpolate({ inputRange: [0,1], outputRange: ['20deg','160deg'] }) }], transformOrigin: 'top' }]} />
+      </View>
+      <Text style={[a.label, { color }]}>Press overhead · Lock out at top</Text>
+    </View>
+  );
 }
 
-interface LoggedSet {
-  exerciseId: string; exerciseName: string;
-  setNumber: number; repsCompleted: string; weightKg: string;
-}
+const a = StyleSheet.create({
+  scene:       { width: '100%', height: 220, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.xl, marginBottom: Spacing.lg, overflow: 'hidden', position: 'relative' },
+  label:       { position: 'absolute', bottom: 12, fontSize: 11, fontWeight: FontWeight.semibold, opacity: 0.9 },
+  head:        { width: 32, height: 32, borderRadius: 16, marginBottom: 4 },
+  torso:       { width: 28, height: 50, borderRadius: 8, marginBottom: 4 },
+  arm:         { width: 10, height: 42, borderRadius: 5 },
+  forearm:     { width: 10, height: 38, borderRadius: 5 },
+  leg:         { width: 12, height: 46, borderRadius: 6 },
+  legsRow:     { flexDirection: 'row', gap: 8, marginTop: 2 },
+  armsUp:      { flexDirection: 'row', gap: 28, marginBottom: 4 },
+  curlArms:    { flexDirection: 'row', gap: 40, marginTop: 4 },
+  shoulderArms:{ flexDirection: 'row', gap: 28, marginTop: 4 },
+  runLegs:     { flexDirection: 'row', gap: 8 },
+  runFigure:   { alignItems: 'center' },
+  bar:         { width: 130, height: 10, borderRadius: 5 },
+  plate:       { width: 14, height: 28, borderRadius: 4, position: 'absolute', top: 0 },
+  bench:       { width: 160, height: 16, borderRadius: 8, position: 'absolute', bottom: 60 },
+  lyingBody:   { flexDirection: 'row', alignItems: 'center', gap: 8, position: 'absolute', bottom: 70 },
+  lyingTorso:  { width: 80, height: 24, borderRadius: 8 },
+  barWrap:     { alignItems: 'center', position: 'absolute', top: 40 },
+  squatFigure: { alignItems: 'center' },
+  pullBar:     { width: 180, height: 10, borderRadius: 5, position: 'absolute', top: 24 },
+  pullFigure:  { alignItems: 'center', position: 'absolute', top: 38 },
+  hingeFigure: { alignItems: 'center' },
+  floor:       { position: 'absolute', bottom: 20, width: '80%', height: 3, borderRadius: 2 },
+  plankBody:   { width: 100, height: 22, borderRadius: 10, position: 'relative' },
+  plankArms:   { flexDirection: 'row', gap: 60, marginTop: 2 },
+  plankArm:    { width: 10, height: 28, borderRadius: 5 },
+});
+
+// ─── Timer helper ─────────────────────────────────────────────────────────────
 function fmtTime(s: number) {
   const m = Math.floor(s / 60);
   return `${m}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function WorkoutDetailScreen() {
-  const { dayIndex } = useLocalSearchParams<{ dayIndex: string }>();
-  const { plan }     = useWorkoutStore();
-  const { profile }  = useUserStore();
-  const { user }     = useAuthStore();
+  const { dayIndex }  = useLocalSearchParams<{ dayIndex: string }>();
+  const { plan }      = useWorkoutStore();
+  const { profile }   = useUserStore();
+  const { user }      = useAuthStore();
 
-  const idx  = parseInt(dayIndex ?? '0');
-  const day  = plan?.days[idx] ?? null;
+  const idx      = parseInt(dayIndex ?? '0');
+  const day      = plan?.days[idx] ?? null;
   const goalMeta = GOAL_META[profile?.goal ?? 'maintain'];
-  const col  = goalMeta.color;
+  const col      = goalMeta.color;
 
-  // ── Active session state ────────────────────────────────────────────────────
-  const [activeSession, setActiveSession] = useState<{ day: WorkoutDay; sessionId: string } | null>(null);
-  const [loggedSets, setLoggedSets]       = useState<LoggedSet[]>([]);
-  const [setInputs, setSetInputs]         = useState<Record<string, { weight: string }>>({});
-  const [sessionSecs, setSessionSecs]     = useState(0);
-  const [restSecs, setRestSecs]           = useState(0);
-  const [restTarget, setRestTarget]       = useState(0);
-  const [restActive, setRestActive]       = useState(false);
+  const [started, setStarted]       = useState(false);
+  const [exIdx, setExIdx]           = useState(0);
+  const [completedSets, setCompleted] = useState<Record<string, number>>({});  // exId -> sets done
+  const [sessionId, setSessionId]   = useState<string | null>(null);
+  const [sessionSecs, setSessionSecs] = useState(0);
+  const [restSecs, setRestSecs]     = useState(0);
+  const [restTarget, setRestTarget] = useState(0);
+  const [resting, setResting]       = useState(false);
+
+  const slideAnim = useRef(new Animated.Value(0)).current;
   const sessionTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const restTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Session timer
   useEffect(() => {
-    if (activeSession) {
+    if (started) {
       sessionTimer.current = setInterval(() => setSessionSecs(s => s + 1), 1000);
     } else {
       if (sessionTimer.current) clearInterval(sessionTimer.current);
       setSessionSecs(0);
     }
     return () => { if (sessionTimer.current) clearInterval(sessionTimer.current); };
-  }, [!!activeSession]);
+  }, [started]);
 
   const startRest = useCallback((seconds: number) => {
     if (restTimer.current) clearInterval(restTimer.current);
-    setRestTarget(seconds); setRestSecs(seconds); setRestActive(true);
+    setRestTarget(seconds); setRestSecs(seconds); setResting(true);
     restTimer.current = setInterval(() => {
       setRestSecs(prev => {
         if (prev <= 1) {
           clearInterval(restTimer.current!);
-          setRestActive(false);
+          setResting(false);
           Vibration.vibrate([0, 200, 100, 200]);
           return 0;
         }
@@ -131,47 +306,52 @@ export default function WorkoutDetailScreen() {
 
   function skipRest() {
     if (restTimer.current) clearInterval(restTimer.current);
-    setRestActive(false); setRestSecs(0);
+    setResting(false); setRestSecs(0);
   }
 
   async function handleStart() {
     if (!user?.uid || !day) return;
-    const sessionId = await startWorkoutSession(user.uid, day.dayLabel);
-    setActiveSession({ day, sessionId });
-    setLoggedSets([]); setSetInputs({});
+    const sid = await startWorkoutSession(user.uid, day.dayLabel);
+    setSessionId(sid);
+    setStarted(true);
+    setExIdx(0);
+    setCompleted({});
   }
 
-  function logSet(exercise: Exercise, setNumber: number) {
-    const key   = `${exercise.id}-${setNumber}`;
-    const input = setInputs[key] ?? { weight: '' };
-    setLoggedSets(prev => {
-      const entry: LoggedSet = {
-        exerciseId: exercise.id, exerciseName: exercise.name,
-        setNumber, repsCompleted: String(exercise.reps), weightKg: input.weight,
-      };
-      const idx = prev.findIndex(s => s.exerciseId === exercise.id && s.setNumber === setNumber);
-      if (idx >= 0) { const n = [...prev]; n[idx] = entry; return n; }
-      return [...prev, entry];
+  function handleLogSet(ex: Exercise) {
+    const done = (completedSets[ex.id] ?? 0) + 1;
+    setCompleted(p => ({ ...p, [ex.id]: done }));
+    if (done < ex.sets) {
+      startRest(ex.restSeconds);
+    } else {
+      // All sets done — move to next exercise after a beat
+      startRest(ex.restSeconds);
+      if (exIdx < (day?.exercises.length ?? 1) - 1) {
+        setTimeout(() => navigateTo(exIdx + 1), (ex.restSeconds + 0.5) * 1000);
+      }
+    }
+  }
+
+  function navigateTo(next: number) {
+    const dir = next > exIdx ? 1 : -1;
+    Animated.sequence([
+      Animated.timing(slideAnim, { toValue: -dir * width, duration: 180, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: dir * width,  duration: 0,   useNativeDriver: true }),
+    ]).start(() => {
+      setExIdx(next);
+      Animated.timing(slideAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start();
     });
-    startRest(exercise.restSeconds);
-  }
-
-  function isLogged(exId: string, setNum: number) {
-    return loggedSets.some(s => s.exerciseId === exId && s.setNumber === setNum);
   }
 
   async function handleFinish() {
-    if (!user?.uid || !activeSession) return;
+    if (!user?.uid || !sessionId) return;
     if (restTimer.current) clearInterval(restTimer.current);
-    await endWorkoutSession(user.uid, activeSession.sessionId, loggedSets);
-    setActiveSession(null); setRestActive(false);
-    Alert.alert('🎉 Workout Complete!', `${loggedSets.length} sets logged · ${fmtTime(sessionSecs)}`);
+    const sets = Object.entries(completedSets).map(([id, n]) => ({ exerciseId: id, setsCompleted: n }));
+    await endWorkoutSession(user.uid, sessionId, sets);
+    setStarted(false); setResting(false);
+    Alert.alert('🎉 Workout Complete!', `Great work! ${fmtTime(sessionSecs)} session.`);
+    router.back();
   }
-
-  const totalSets = activeSession?.day.exercises.reduce((a, e) => a + e.sets, 0) ?? 0;
-  const doneSets  = loggedSets.length;
-  const pct       = totalSets ? (doneSets / totalSets) * 100 : 0;
-  const restPct   = restTarget > 0 ? ((restTarget - restSecs) / restTarget) * 100 : 0;
 
   if (!day) {
     return (
@@ -179,432 +359,331 @@ export default function WorkoutDetailScreen() {
         <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <View style={s.notFound}>
-          <Text style={{ fontSize: 48 }}>🏋️</Text>
-          <Text style={s.notFoundTxt}>Workout not found</Text>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: Colors.textMuted, fontSize: FontSize.md }}>Workout not found</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const uniqueMuscles = Array.from(new Set(day.exercises.flatMap(e => e.muscleGroups)));
-  const totalVolume   = day.exercises.reduce((a, e) => a + e.sets * parseInt(String(e.reps)), 0);
+  const ex          = day.exercises[exIdx];
+  const category    = getCategory(ex?.name ?? '');
+  const doneSets    = completedSets[ex?.id] ?? 0;
+  const totalExDone = day.exercises.filter(e => (completedSets[e.id] ?? 0) >= e.sets).length;
+  const overallPct  = (totalExDone / day.exercises.length) * 100;
+  const restPct     = restTarget > 0 ? ((restTarget - restSecs) / restTarget) * 100 : 0;
+  const primaryMuscle = ex?.muscleGroups?.[0] ?? '';
+  const exColor     = muscleCol(primaryMuscle) || col;
 
-  return (
-    <SafeAreaView style={s.screen} edges={['top']}>
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* ── Hero ──────────────────────────────────────────────────────────── */}
-        <View style={[s.hero, { backgroundColor: `${col}18` }]}>
+  // ── Pre-workout overview ───────────────────────────────────────────────────
+  if (!started) {
+    return (
+      <SafeAreaView style={s.screen} edges={['top']}>
+        <ScrollView contentContainerStyle={s.overviewScroll} showsVerticalScrollIndicator={false}>
           <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
             <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
           </TouchableOpacity>
 
-          {/* Big emoji illustration */}
-          <View style={[s.heroPlate, { borderColor: `${col}55`, shadowColor: col }]}>
-            <Text style={s.heroEmoji}>
-              {day.focus.match(/chest|push/i)   ? '🏋️'
-               : day.focus.match(/back|pull/i)  ? '🚣'
-               : day.focus.match(/leg|squat/i)  ? '🦵'
-               : day.focus.match(/cardio|hiit/i)? '🏃'
-               : day.focus.match(/core|abs/i)   ? '🧘'
-               : '💪'}
-            </Text>
-          </View>
-
-          <View style={[s.goalBadge, { backgroundColor: col }]}>
-            <Text style={s.goalEmoji}>{goalMeta.emoji}</Text>
-            <Text style={s.goalTxt}>{goalMeta.label.toUpperCase()}</Text>
-          </View>
-
-          <Text style={s.heroDay}>{day.dayLabel}</Text>
-          <Text style={s.heroFocus}>{day.focus}</Text>
-
-          {/* Meta pills */}
-          <View style={s.metaRow}>
-            <View style={s.metaPill}>
-              <Text style={s.metaEmoji}>⏱️</Text>
-              <Text style={s.metaTxt}>{day.durationMinutes} min</Text>
+          {/* Hero */}
+          <View style={[s.overviewHero, { backgroundColor: `${col}18` }]}>
+            <View style={[s.goalBadge, { backgroundColor: col }]}>
+              <Text style={s.goalBadgeTxt}>{goalMeta.emoji} {goalMeta.label.toUpperCase()}</Text>
             </View>
-            <View style={s.metaPill}>
-              <Text style={s.metaEmoji}>🎯</Text>
-              <Text style={s.metaTxt}>{day.exercises.length} exercises</Text>
-            </View>
-            <View style={s.metaPill}>
-              <Text style={s.metaEmoji}>📊</Text>
-              <Text style={s.metaTxt}>~{totalVolume} total reps</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Muscles targeted visual strip ─────────────────────────────────── */}
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>Muscles Targeted</Text>
-          <View style={s.muscleGrid}>
-            {uniqueMuscles.map(m => (
-              <View key={m} style={[s.muscleCard, { borderTopColor: muscleCol(m), borderTopWidth: 3 }]}>
-                <View style={[s.muscleIconWrap, { backgroundColor: `${muscleCol(m)}18` }]}>
-                  <Text style={s.muscleIcon}>{muscleEmoji(m)}</Text>
-                </View>
-                <Text style={[s.muscleName, { color: muscleCol(m) }]}>{m}</Text>
+            <Text style={s.overviewDay}>{day.dayLabel}</Text>
+            <Text style={s.overviewFocus}>{day.focus}</Text>
+            <View style={s.overviewMeta}>
+              <View style={s.metaPill}>
+                <Ionicons name="time-outline" size={14} color={col} />
+                <Text style={[s.metaPillTxt, { color: col }]}>{day.durationMinutes} min</Text>
               </View>
-            ))}
+              <View style={s.metaPill}>
+                <Ionicons name="barbell-outline" size={14} color={col} />
+                <Text style={[s.metaPillTxt, { color: col }]}>{day.exercises.length} exercises</Text>
+              </View>
+            </View>
           </View>
-        </View>
 
-        {/* ── Exercise cards ─────────────────────────────────────────────────── */}
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>Exercises</Text>
-          {day.exercises.map((ex, i) => {
-            const intensity = intensityFromReps(ex.reps);
-            const isLast    = i === day.exercises.length - 1;
+          {/* Exercise list preview */}
+          <Text style={s.previewTitle}>Today's Exercises</Text>
+          {day.exercises.map((e, i) => {
+            const mc = muscleCol(e.muscleGroups?.[0] ?? '');
             return (
-              <View key={ex.id} style={s.exWrap}>
-                {/* Connector line */}
-                {!isLast && <View style={[s.exLine, { backgroundColor: `${col}33` }]} />}
-
-                <View style={[s.exCard, { borderLeftColor: col, borderLeftWidth: 3 }]}>
-                  {/* Top row: number + emoji + intensity */}
-                  <View style={s.exTop}>
-                    <View style={[s.exNumBadge, { backgroundColor: col }]}>
-                      <Text style={s.exNumText}>{i + 1}</Text>
-                    </View>
-                    <View style={[s.exIconWrap, { backgroundColor: `${col}15` }]}>
-                      <Text style={s.exIcon}>{exEmoji(ex.name)}</Text>
-                    </View>
-                    <View style={[s.intensityBadge, { backgroundColor: `${intensity.color}18`, borderColor: `${intensity.color}44` }]}>
-                      <Text style={s.intensityEmoji}>{intensity.emoji}</Text>
-                      <Text style={[s.intensityLabel, { color: intensity.color }]}>{intensity.label}</Text>
-                    </View>
-                  </View>
-
-                  {/* Exercise name */}
-                  <Text style={s.exName}>{ex.name}</Text>
-
-                  {/* Sets × Reps × Rest visual grid */}
-                  <View style={s.statsGrid}>
-                    <View style={[s.statBox, { borderColor: Colors.primary }]}>
-                      <Text style={[s.statNum, { color: Colors.primary }]}>{ex.sets}</Text>
-                      <Text style={s.statLbl}>SETS</Text>
-                    </View>
-                    <View style={s.statDivider} />
-                    <View style={[s.statBox, { borderColor: Colors.accent }]}>
-                      <Text style={[s.statNum, { color: Colors.accent }]}>{ex.reps}</Text>
-                      <Text style={s.statLbl}>REPS</Text>
-                    </View>
-                    <View style={s.statDivider} />
-                    <View style={[s.statBox, { borderColor: Colors.bulk }]}>
-                      <Text style={[s.statNum, { color: Colors.bulk }]}>{ex.restSeconds}s</Text>
-                      <Text style={s.statLbl}>REST</Text>
-                    </View>
-                  </View>
-
-                  {/* Muscle group chips */}
-                  <View style={s.exMuscleRow}>
-                    {ex.muscleGroups.map(m => (
-                      <View key={m} style={[s.exMuscleChip, { backgroundColor: `${muscleCol(m)}18` }]}>
-                        <Text style={s.exMuscleEmoji}>{muscleEmoji(m)}</Text>
-                        <Text style={[s.exMuscleTxt, { color: muscleCol(m) }]}>{m}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  {/* Form tip */}
-                  {ex.notes ? (
-                    <View style={s.formTip}>
-                      <Ionicons name="bulb-outline" size={14} color={Colors.accent} />
-                      <Text style={s.formTipTxt}>{ex.notes}</Text>
-                    </View>
-                  ) : null}
+              <View key={e.id} style={s.previewRow}>
+                <View style={[s.previewNum, { backgroundColor: `${mc}20` }]}>
+                  <Text style={[s.previewNumTxt, { color: mc }]}>{i + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.previewName}>{e.name}</Text>
+                  <Text style={s.previewMeta}>{e.sets} sets · {e.reps} reps · {e.restSeconds}s rest</Text>
+                </View>
+                <View style={[s.previewChip, { backgroundColor: `${mc}18` }]}>
+                  <Text style={[s.previewChipTxt, { color: mc }]}>{e.muscleGroups[0]}</Text>
                 </View>
               </View>
             );
           })}
 
-          {/* Ready card */}
-          <View style={[s.readyCard, { backgroundColor: `${col}18`, borderColor: `${col}44` }]}>
-            <Text style={s.readyEmoji}>💪</Text>
-            <Text style={[s.readyTxt, { color: col }]}>Ready to crush it?</Text>
-          </View>
+          <View style={{ height: 120 }} />
+        </ScrollView>
+
+        <View style={s.stickyBar}>
+          <TouchableOpacity style={[s.startBtn, { backgroundColor: col }]} onPress={handleStart}>
+            <Ionicons name="play-circle" size={22} color="#fff" />
+            <Text style={s.startBtnTxt}>Start Workout</Text>
+          </TouchableOpacity>
         </View>
+      </SafeAreaView>
+    );
+  }
 
-        <View style={{ height: 130 }} />
-      </ScrollView>
+  // ── Active workout ─────────────────────────────────────────────────────────
+  return (
+    <SafeAreaView style={s.screen} edges={['top', 'bottom']}>
 
-      {/* ── Sticky Start button ────────────────────────────────────────────────── */}
-      <View style={s.stickyBar}>
-        <TouchableOpacity style={[s.startBtn, { backgroundColor: col }]} onPress={handleStart}>
-          <Ionicons name="play-circle" size={22} color="#fff" />
-          <Text style={s.startBtnTxt}>Start Workout</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ══════════════════════════════════════════════════════════════════════════
-          ACTIVE SESSION MODAL
-      ══════════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        visible={!!activeSession}
-        animationType="slide"
-        onRequestClose={() =>
-          Alert.alert('End workout?', 'Your progress will be saved.', [
+      {/* Header */}
+      <View style={s.sessionHeader}>
+        <TouchableOpacity onPress={() =>
+          Alert.alert('End workout?', 'Progress will be saved.', [
             { text: 'Keep going', style: 'cancel' },
             { text: 'Finish', onPress: handleFinish },
           ])
-        }
-      >
-        <SafeAreaView style={s.sessionScreen} edges={['top', 'bottom']}>
+        }>
+          <Ionicons name="close" size={24} color={Colors.textMuted} />
+        </TouchableOpacity>
 
-          {/* Session header */}
-          <View style={s.sessionHeader}>
-            <View>
-              <Text style={s.sessionDay}>{activeSession?.day.dayLabel}</Text>
-              <Text style={s.sessionFocus}>{activeSession?.day.focus}</Text>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={s.sessionDayTxt}>{day.dayLabel}</Text>
+          <Text style={s.sessionFocusTxt}>{day.focus}</Text>
+        </View>
+
+        <View style={[s.timerBadge, { borderColor: `${col}44` }]}>
+          <Ionicons name="timer-outline" size={12} color={col} />
+          <Text style={[s.timerTxt, { color: col }]}>{fmtTime(sessionSecs)}</Text>
+        </View>
+      </View>
+
+      {/* Overall progress bar */}
+      <View style={s.overallTrack}>
+        <Animated.View style={[s.overallFill, { width: `${overallPct}%`, backgroundColor: col }]} />
+      </View>
+      <View style={s.progressLabelRow}>
+        <Text style={s.progressLbl}>Exercise {exIdx + 1} of {day.exercises.length}</Text>
+        <Text style={s.progressLbl}>{totalExDone} complete</Text>
+      </View>
+
+      {/* Exercise navigator dots */}
+      <View style={s.dotsRow}>
+        {day.exercises.map((e, i) => {
+          const done = (completedSets[e.id] ?? 0) >= e.sets;
+          return (
+            <TouchableOpacity key={e.id} onPress={() => navigateTo(i)}>
+              <View style={[
+                s.dot,
+                i === exIdx && { backgroundColor: col, width: 20 },
+                done && { backgroundColor: Colors.success },
+              ]} />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Exercise card with slide animation */}
+      <Animated.View style={[s.exCard, { transform: [{ translateX: slideAnim }] }]}>
+
+        {/* Animation area */}
+        <ExerciseAnimation category={category} color={exColor} />
+
+        {/* Exercise info */}
+        <Text style={s.exName}>{ex.name}</Text>
+
+        <View style={s.muscleRow}>
+          {ex.muscleGroups.map(m => (
+            <View key={m} style={[s.muscleChip, { backgroundColor: `${muscleCol(m)}18` }]}>
+              <Text style={[s.muscleChipTxt, { color: muscleCol(m) }]}>{m}</Text>
             </View>
-            <View style={s.sessionRight}>
-              <View style={s.timerBadge}>
-                <Ionicons name="timer-outline" size={14} color={Colors.primary} />
-                <Text style={s.timerTxt}>{fmtTime(sessionSecs)}</Text>
-              </View>
-              <TouchableOpacity style={s.finishBtn} onPress={handleFinish}>
-                <Text style={s.finishTxt}>Finish</Text>
+          ))}
+        </View>
+
+        {/* Sets grid */}
+        <View style={s.setsInfo}>
+          <View style={[s.statBox, { borderColor: exColor }]}>
+            <Text style={[s.statNum, { color: exColor }]}>{ex.sets}</Text>
+            <Text style={s.statLbl}>SETS</Text>
+          </View>
+          <View style={s.statDivider} />
+          <View style={[s.statBox, { borderColor: Colors.accent }]}>
+            <Text style={[s.statNum, { color: Colors.accent }]}>{ex.reps}</Text>
+            <Text style={s.statLbl}>REPS</Text>
+          </View>
+          <View style={s.statDivider} />
+          <View style={[s.statBox, { borderColor: Colors.textMuted }]}>
+            <Text style={[s.statNum, { color: Colors.textMuted }]}>{ex.restSeconds}s</Text>
+            <Text style={s.statLbl}>REST</Text>
+          </View>
+        </View>
+
+        {/* Set tap buttons */}
+        <View style={s.setsRow}>
+          {Array.from({ length: ex.sets }, (_, i) => {
+            const done = i < doneSets;
+            const next = i === doneSets;
+            return (
+              <TouchableOpacity
+                key={i}
+                style={[
+                  s.setBtn,
+                  done && { backgroundColor: Colors.success, borderColor: Colors.success },
+                  next && { borderColor: exColor, borderWidth: 2 },
+                  resting && next && { opacity: 0.5 },
+                ]}
+                onPress={() => !done && !resting && handleLogSet(ex)}
+                disabled={done || resting}
+              >
+                {done
+                  ? <Ionicons name="checkmark" size={22} color="#fff" />
+                  : <Text style={[s.setBtnTxt, next && { color: exColor }]}>
+                      {`Set ${i + 1}`}
+                    </Text>
+                }
               </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {ex.notes ? (
+          <View style={s.formTip}>
+            <Ionicons name="bulb-outline" size={13} color={Colors.accent} />
+            <Text style={s.formTipTxt}>{ex.notes}</Text>
+          </View>
+        ) : null}
+      </Animated.View>
+
+      {/* Rest timer banner */}
+      {resting && (
+        <View style={[s.restBanner, { borderColor: `${col}44` }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.restLabel}>REST · {fmtTime(restSecs)}</Text>
+            <View style={s.restTrack}>
+              <Animated.View style={[s.restFill, { width: `${restPct}%`, backgroundColor: col }]} />
             </View>
           </View>
+          <TouchableOpacity style={[s.skipBtn, { backgroundColor: `${col}22` }]} onPress={skipRest}>
+            <Text style={[s.skipTxt, { color: col }]}>Skip →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
-          {/* Progress bar */}
-          <View style={s.progressTrack}>
-            <View style={[s.progressFill, { width: `${pct}%` }]} />
-          </View>
-          <Text style={s.progressLbl}>{doneSets} / {totalSets} sets complete</Text>
+      {/* Bottom nav */}
+      <View style={s.bottomNav}>
+        <TouchableOpacity
+          style={[s.navBtn, exIdx === 0 && s.navBtnDisabled]}
+          onPress={() => exIdx > 0 && navigateTo(exIdx - 1)}
+          disabled={exIdx === 0}
+        >
+          <Ionicons name="chevron-back" size={20} color={exIdx === 0 ? Colors.border : Colors.textPrimary} />
+          <Text style={[s.navBtnTxt, exIdx === 0 && { color: Colors.border }]}>Prev</Text>
+        </TouchableOpacity>
 
-          {/* Rest timer */}
-          {restActive && (
-            <View style={s.restBanner}>
-              <View style={s.restLeft}>
-                <Text style={s.restLabel}>REST</Text>
-                <Text style={s.restTime}>{fmtTime(restSecs)}</Text>
-              </View>
-              <View style={s.restBarTrack}>
-                <View style={[s.restBarFill, { width: `${restPct}%` }]} />
-              </View>
-              <TouchableOpacity style={s.skipBtn} onPress={skipRest}>
-                <Text style={s.skipTxt}>Skip</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <ScrollView contentContainerStyle={s.sessionScroll}>
-            {activeSession?.day.exercises.map((ex, exIdx) => {
-              const allDone = Array.from({ length: ex.sets }, (_, i) => i + 1).every(n => isLogged(ex.id, n));
-              return (
-                <View key={ex.id} style={[s.sessionExCard, allDone && s.sessionExDone]}>
-                  <View style={s.sessionExHeader}>
-                    <View style={[s.sessionExNum, allDone && { backgroundColor: Colors.success }]}>
-                      {allDone
-                        ? <Ionicons name="checkmark" size={14} color={Colors.white} />
-                        : <Text style={s.sessionExNumTxt}>{exIdx + 1}</Text>
-                      }
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.sessionExName}>{ex.name}</Text>
-                      <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-                        <ExBadge label={`${ex.sets} × ${ex.reps}`} color={Colors.primary} />
-                        <ExBadge label={`${ex.restSeconds}s rest`}  color={Colors.accent}  />
-                      </View>
-                    </View>
-                    <Text style={s.sessionExEmoji}>{exEmoji(ex.name)}</Text>
-                  </View>
-
-                  {ex.notes && (
-                    <View style={s.formNote}>
-                      <Ionicons name="bulb-outline" size={14} color={Colors.accent} />
-                      <Text style={s.formNoteTxt}>{ex.notes}</Text>
-                    </View>
-                  )}
-
-                  <View style={s.setHeader}>
-                    <Text style={[s.setHeaderTxt, { width: 36 }]}>SET</Text>
-                    <Text style={[s.setHeaderTxt, { width: 60 }]}>REPS</Text>
-                    <Text style={[s.setHeaderTxt, { flex: 1 }]}>WEIGHT (kg)</Text>
-                    <Text style={[s.setHeaderTxt, { width: 44 }]}>DONE</Text>
-                  </View>
-
-                  {Array.from({ length: ex.sets }, (_, i) => {
-                    const setNum = i + 1;
-                    const key    = `${ex.id}-${setNum}`;
-                    const done   = isLogged(ex.id, setNum);
-                    return (
-                      <View key={setNum} style={[s.setRow, done && s.setRowDone]}>
-                        <View style={[s.setNumBubble, done && { backgroundColor: Colors.success }]}>
-                          <Text style={[s.setNumTxt, done && { color: '#fff' }]}>{setNum}</Text>
-                        </View>
-                        {/* Reps shown as static target — not editable */}
-                        <View style={[s.repsDisplay, done && { borderColor: `${Colors.success}44` }]}>
-                          <Text style={[s.repsText, done && { color: Colors.success }]}>
-                            {String(ex.reps).replace(/\D.*/, '')}
-                          </Text>
-                        </View>
-                        <TextInput
-                          style={[s.setInput, done && s.setInputDone]}
-                          placeholder="0"
-                          placeholderTextColor={Colors.textMuted}
-                          keyboardType="decimal-pad"
-                          value={setInputs[key]?.weight ?? ''}
-                          onChangeText={v => setSetInputs(p => ({ ...p, [key]: { weight: v } }))}
-                          editable={!done}
-                        />
-                        <TouchableOpacity style={s.checkBtn} onPress={() => logSet(ex, setNum)} disabled={done}>
-                          <Ionicons
-                            name={done ? 'checkmark-circle' : 'checkmark-circle-outline'}
-                            size={32} color={done ? Colors.success : Colors.border}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              );
-            })}
-            <View style={{ height: 60 }} />
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+        {exIdx === day.exercises.length - 1 ? (
+          <TouchableOpacity style={[s.finishBtn, { backgroundColor: col }]} onPress={handleFinish}>
+            <Ionicons name="trophy-outline" size={18} color="#fff" />
+            <Text style={s.finishBtnTxt}>Finish</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={[s.finishBtn, { backgroundColor: `${col}22`, borderWidth: 1, borderColor: `${col}55` }]} onPress={() => navigateTo(exIdx + 1)}>
+            <Text style={[s.finishBtnTxt, { color: col }]}>Next</Text>
+            <Ionicons name="chevron-forward" size={18} color={col} />
+          </TouchableOpacity>
+        )}
+      </View>
     </SafeAreaView>
   );
 }
 
-function ExBadge({ label, color }: { label: string; color: string }) {
-  return (
-    <View style={[xb.badge, { backgroundColor: `${color}18` }]}>
-      <Text style={[xb.txt, { color }]}>{label}</Text>
-    </View>
-  );
-}
-const xb = StyleSheet.create({
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full },
-  txt:   { fontSize: 10, fontWeight: FontWeight.bold },
-});
-
-const CARD_W = (width - Spacing.xl * 2 - Spacing.sm * 3) / 4;
-
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  screen:       { flex: 1, backgroundColor: Colors.background },
-  scroll:       { paddingBottom: 20 },
-  backBtn:      { padding: Spacing.md },
-  notFound:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md },
-  notFoundTxt:  { color: Colors.textMuted, fontSize: FontSize.md },
+  screen:          { flex: 1, backgroundColor: Colors.background },
 
-  // Hero
-  hero:         { paddingBottom: Spacing.xl, paddingHorizontal: Spacing.xl },
-  heroPlate:    {
-    width: 140, height: 140, borderRadius: 70,
-    backgroundColor: Colors.surface, alignItems: 'center', justifyContent: 'center',
-    alignSelf: 'center', borderWidth: 3, marginBottom: Spacing.md,
-    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 20, elevation: 12,
-  },
-  heroEmoji:    { fontSize: 72 },
-  goalBadge:    { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'center', borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 5, marginBottom: Spacing.sm },
-  goalEmoji:    { fontSize: 13 },
-  goalTxt:      { fontSize: 11, color: '#fff', fontWeight: FontWeight.black, letterSpacing: 1 },
-  heroDay:      { fontSize: 26, fontWeight: FontWeight.black, color: Colors.textPrimary, textAlign: 'center', lineHeight: 32, marginBottom: 4 },
-  heroFocus:    { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.md },
-  metaRow:      { flexDirection: 'row', justifyContent: 'center', gap: Spacing.sm, flexWrap: 'wrap' },
-  metaPill:     { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.surface, borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: Colors.border },
-  metaEmoji:    { fontSize: 13 },
-  metaTxt:      { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: FontWeight.semibold },
+  // Back button
+  backBtn:         { padding: Spacing.md },
 
-  // Section
-  section:      { marginTop: Spacing.xl, paddingHorizontal: Spacing.xl },
-  sectionTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.black, color: Colors.textPrimary, marginBottom: Spacing.md },
+  // Overview (pre-start)
+  overviewScroll:  { padding: Spacing.xl, paddingTop: Spacing.sm },
+  overviewHero:    { borderRadius: Radius.xl, padding: Spacing.xl, alignItems: 'center', marginBottom: Spacing.xl },
+  goalBadge:       { borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 5, marginBottom: Spacing.md },
+  goalBadgeTxt:    { color: '#fff', fontSize: 11, fontWeight: FontWeight.black, letterSpacing: 1 },
+  overviewDay:     { fontSize: 28, fontWeight: FontWeight.black, color: Colors.textPrimary, textAlign: 'center' },
+  overviewFocus:   { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: Spacing.md },
+  overviewMeta:    { flexDirection: 'row', gap: Spacing.sm },
+  metaPill:        { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: Colors.surface, borderRadius: Radius.full, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: Colors.border },
+  metaPillTxt:     { fontSize: FontSize.xs, fontWeight: FontWeight.bold },
+  previewTitle:    { fontSize: FontSize.lg, fontWeight: FontWeight.black, color: Colors.textPrimary, marginBottom: Spacing.md },
+  previewRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.md, marginBottom: Spacing.sm, borderWidth: 1, borderColor: Colors.border },
+  previewNum:      { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  previewNumTxt:   { fontSize: FontSize.md, fontWeight: FontWeight.black },
+  previewName:     { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  previewMeta:     { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  previewChip:     { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 4 },
+  previewChipTxt:  { fontSize: 10, fontWeight: FontWeight.bold, textTransform: 'capitalize' },
 
-  // Muscle grid
-  muscleGrid:   { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  muscleCard:   { width: CARD_W, backgroundColor: Colors.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', padding: Spacing.sm, gap: 6 },
-  muscleIconWrap:{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  muscleIcon:   { fontSize: 22 },
-  muscleName:   { fontSize: 10, fontWeight: FontWeight.bold, textTransform: 'capitalize', textAlign: 'center' },
+  // Sticky start bar
+  stickyBar:       { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.xl, paddingBottom: 36, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
+  startBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, borderRadius: Radius.lg, paddingVertical: 16 },
+  startBtnTxt:     { fontSize: FontSize.lg, fontWeight: FontWeight.black, color: '#fff' },
 
-  // Exercise cards
-  exWrap:       { position: 'relative', marginBottom: Spacing.sm },
-  exLine:       { position: 'absolute', left: 16, top: 72, bottom: -Spacing.sm, width: 2 },
-  exCard:       { backgroundColor: Colors.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border, padding: Spacing.lg, gap: Spacing.sm },
-  exTop:        { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },
-  exNumBadge:   { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  exNumText:    { fontSize: FontSize.sm, fontWeight: FontWeight.black, color: '#fff' },
-  exIconWrap:   { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  exIcon:       { fontSize: 24 },
-  intensityBadge:{ flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, marginLeft: 'auto' },
-  intensityEmoji:{ fontSize: 12 },
-  intensityLabel:{ fontSize: 10, fontWeight: FontWeight.bold },
-  exName:       { fontSize: FontSize.lg, fontWeight: FontWeight.black, color: Colors.textPrimary, lineHeight: 24 },
+  // Active session header
+  sessionHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.xl, paddingTop: Spacing.sm, paddingBottom: Spacing.md },
+  sessionDayTxt:   { fontSize: FontSize.md, fontWeight: FontWeight.black, color: Colors.textPrimary },
+  sessionFocusTxt: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center' },
+  timerBadge:      { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1 },
+  timerTxt:        { fontSize: FontSize.sm, fontWeight: FontWeight.black },
 
-  // Stats grid
-  statsGrid:    { flexDirection: 'row', backgroundColor: Colors.surfaceElevated, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden', marginVertical: Spacing.sm },
-  statBox:      { flex: 1, alignItems: 'center', paddingVertical: Spacing.md, borderBottomWidth: 3 },
-  statNum:      { fontSize: FontSize.xl, fontWeight: FontWeight.black },
-  statLbl:      { fontSize: 9, color: Colors.textMuted, fontWeight: FontWeight.black, letterSpacing: 0.8, marginTop: 2 },
-  statDivider:  { width: 1, backgroundColor: Colors.border },
+  // Progress
+  overallTrack:    { height: 3, backgroundColor: Colors.border, marginHorizontal: Spacing.xl, borderRadius: 2, overflow: 'hidden' },
+  overallFill:     { height: '100%', borderRadius: 2 },
+  progressLabelRow:{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, marginTop: 4 },
+  progressLbl:     { fontSize: 10, color: Colors.textMuted },
 
-  // Muscle chips on exercise
-  exMuscleRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  exMuscleChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
-  exMuscleEmoji:{ fontSize: 11 },
-  exMuscleTxt:  { fontSize: 10, fontWeight: FontWeight.semibold, textTransform: 'capitalize' },
+  // Dots
+  dotsRow:         { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: Spacing.md },
+  dot:             { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.border },
+
+  // Exercise card
+  exCard:          { flex: 1, paddingHorizontal: Spacing.xl },
+  exName:          { fontSize: FontSize.xl, fontWeight: FontWeight.black, color: Colors.textPrimary, marginBottom: Spacing.sm },
+  muscleRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: Spacing.md },
+  muscleChip:      { borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 },
+  muscleChipTxt:   { fontSize: 10, fontWeight: FontWeight.bold, textTransform: 'capitalize' },
+
+  // Stats
+  setsInfo:        { flexDirection: 'row', backgroundColor: Colors.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden', marginBottom: Spacing.lg },
+  statBox:         { flex: 1, alignItems: 'center', paddingVertical: Spacing.md, borderBottomWidth: 3 },
+  statNum:         { fontSize: FontSize.xl, fontWeight: FontWeight.black },
+  statLbl:         { fontSize: 9, color: Colors.textMuted, fontWeight: FontWeight.black, letterSpacing: 0.8, marginTop: 2 },
+  statDivider:     { width: 1, backgroundColor: Colors.border },
+
+  // Set buttons
+  setsRow:         { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap', marginBottom: Spacing.md },
+  setBtn:          { flex: 1, minWidth: 70, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, paddingVertical: 14 },
+  setBtnTxt:       { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.textMuted },
 
   // Form tip
-  formTip:      { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: `${Colors.accent}10`, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1, borderColor: `${Colors.accent}25` },
-  formTipTxt:   { flex: 1, fontSize: FontSize.xs, color: Colors.accent, lineHeight: 18 },
+  formTip:         { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: `${Colors.accent}10`, borderRadius: Radius.md, padding: Spacing.sm, borderWidth: 1, borderColor: `${Colors.accent}25` },
+  formTipTxt:      { flex: 1, fontSize: FontSize.xs, color: Colors.accent, lineHeight: 18 },
 
-  // Ready card
-  readyCard:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, borderRadius: Radius.xl, borderWidth: 1, padding: Spacing.lg, marginTop: Spacing.sm },
-  readyEmoji:   { fontSize: 28 },
-  readyTxt:     { fontSize: FontSize.lg, fontWeight: FontWeight.black },
+  // Rest banner
+  restBanner:      { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginHorizontal: Spacing.xl, marginBottom: Spacing.sm, backgroundColor: Colors.surface, borderRadius: Radius.xl, borderWidth: 1, padding: Spacing.md },
+  restLabel:       { fontSize: FontSize.md, fontWeight: FontWeight.black, color: Colors.textPrimary, marginBottom: 6 },
+  restTrack:       { height: 6, backgroundColor: Colors.border, borderRadius: 3, overflow: 'hidden' },
+  restFill:        { height: '100%', borderRadius: 3 },
+  skipBtn:         { borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: 8 },
+  skipTxt:         { fontSize: FontSize.sm, fontWeight: FontWeight.black },
 
-  // Sticky bar
-  stickyBar:    { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.xl, paddingBottom: 36, backgroundColor: Colors.background, borderTopWidth: 1, borderTopColor: Colors.border },
-  startBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, borderRadius: Radius.lg, paddingVertical: 16 },
-  startBtnTxt:  { fontSize: FontSize.lg, fontWeight: FontWeight.black, color: '#fff', letterSpacing: 0.5 },
-
-  // Session modal
-  sessionScreen:  { flex: 1, backgroundColor: Colors.background },
-  sessionHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  sessionDay:     { fontSize: FontSize.xl, fontWeight: FontWeight.black, color: Colors.textPrimary },
-  sessionFocus:   { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2 },
-  sessionRight:   { alignItems: 'flex-end', gap: Spacing.sm },
-  timerBadge:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: `${Colors.primary}18`, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  timerTxt:       { fontSize: FontSize.md, fontWeight: FontWeight.black, color: Colors.primary },
-  finishBtn:      { backgroundColor: Colors.success, borderRadius: Radius.lg, paddingHorizontal: Spacing.lg, paddingVertical: 10 },
-  finishTxt:      { color: '#fff', fontWeight: FontWeight.black, fontSize: FontSize.md },
-  progressTrack:  { height: 4, backgroundColor: Colors.border, marginHorizontal: Spacing.xl, marginTop: Spacing.sm, borderRadius: 2, overflow: 'hidden' },
-  progressFill:   { height: '100%', backgroundColor: Colors.success, borderRadius: 2 },
-  progressLbl:    { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'right', paddingHorizontal: Spacing.xl, marginTop: 4 },
-  restBanner:     { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, margin: Spacing.xl, marginBottom: 0, backgroundColor: `${Colors.accent}12`, borderRadius: Radius.xl, borderWidth: 1, borderColor: `${Colors.accent}44`, paddingHorizontal: Spacing.md, paddingVertical: Spacing.md },
-  restLeft:       { alignItems: 'center', width: 52 },
-  restLabel:      { fontSize: 9, fontWeight: FontWeight.black, color: Colors.accent, letterSpacing: 1 },
-  restTime:       { fontSize: FontSize.xl, fontWeight: FontWeight.black, color: Colors.accent },
-  restBarTrack:   { flex: 1, height: 8, backgroundColor: Colors.border, borderRadius: 4, overflow: 'hidden' },
-  restBarFill:    { height: '100%', backgroundColor: Colors.accent, borderRadius: 4 },
-  skipBtn:        { backgroundColor: `${Colors.accent}22`, borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: 6 },
-  skipTxt:        { fontSize: FontSize.xs, color: Colors.accent, fontWeight: FontWeight.bold },
-  sessionScroll:  { padding: Spacing.xl, paddingTop: Spacing.md },
-  sessionExCard:  { backgroundColor: Colors.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border, padding: Spacing.md, marginBottom: Spacing.md },
-  sessionExDone:  { borderColor: `${Colors.success}55`, backgroundColor: `${Colors.success}06` },
-  sessionExHeader:{ flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md, marginBottom: Spacing.sm },
-  sessionExNum:   { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  sessionExNumTxt:{ fontSize: FontSize.sm, fontWeight: FontWeight.black, color: Colors.textMuted },
-  sessionExName:  { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textPrimary },
-  sessionExEmoji: { fontSize: 28 },
-  formNote:       { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: `${Colors.accent}10`, borderRadius: Radius.md, padding: Spacing.sm, marginBottom: Spacing.sm, borderWidth: 1, borderColor: `${Colors.accent}25` },
-  formNoteTxt:    { flex: 1, fontSize: FontSize.xs, color: Colors.accent, lineHeight: 16 },
-  setHeader:      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, paddingBottom: 8, gap: Spacing.sm },
-  setHeaderTxt:   { fontSize: 9, fontWeight: FontWeight.black, color: Colors.textMuted, letterSpacing: 0.8, textAlign: 'center' },
-  setRow:         { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 6, paddingHorizontal: 4, borderRadius: Radius.md, marginBottom: 4 },
-  setRowDone:     { backgroundColor: `${Colors.success}10` },
-  setNumBubble:   { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.surfaceElevated, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  setNumTxt:      { fontSize: 11, fontWeight: FontWeight.bold, color: Colors.textMuted },
-  repsDisplay:    { width: 60, backgroundColor: Colors.surfaceElevated, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border, paddingVertical: 9, alignItems: 'center', justifyContent: 'center' },
-  repsText:       { fontSize: FontSize.md, fontWeight: FontWeight.black, color: Colors.textPrimary },
-  setInput:       { flex: 1, backgroundColor: Colors.surfaceElevated, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border, paddingVertical: 9, color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: FontWeight.bold, textAlign: 'center' },
-  setInputDone:   { borderColor: `${Colors.success}44`, backgroundColor: `${Colors.success}10`, color: Colors.success },
-  checkBtn:       { width: 44, alignItems: 'center' },
+  // Bottom nav
+  bottomNav:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg, borderTopWidth: 1, borderTopColor: Colors.border },
+  navBtn:          { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 10, paddingHorizontal: Spacing.md },
+  navBtnDisabled:  { opacity: 0.3 },
+  navBtnTxt:       { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textPrimary },
+  finishBtn:       { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: Radius.lg, paddingVertical: 12, paddingHorizontal: Spacing.xl },
+  finishBtnTxt:    { fontSize: FontSize.md, fontWeight: FontWeight.black, color: '#fff' },
 });
