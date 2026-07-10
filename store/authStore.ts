@@ -25,7 +25,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await signUp(name, email, password);
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (err: any) {
-      set({ error: err.message ?? 'Registration failed', isLoading: false });
+      const msg = err?.message ?? err?.error_description ?? (typeof err === 'string' ? err : JSON.stringify(err));
+      set({ error: msg || 'Registration failed', isLoading: false });
       throw err;
     }
   },
@@ -36,7 +37,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await signIn(email, password);
       set({ user, isAuthenticated: true, isLoading: false });
     } catch (err: any) {
-      set({ error: err.message ?? 'Login failed', isLoading: false });
+      const msg = err?.message ?? err?.error_description ?? (typeof err === 'string' ? err : JSON.stringify(err));
+      set({ error: msg || 'Login failed', isLoading: false });
       throw err;
     }
   },
