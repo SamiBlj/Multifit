@@ -33,7 +33,7 @@ export default function RegisterScreen() {
         </View>
         <Text style={styles.title}>Create your account</Text>
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error && error !== '{}' && error !== '[object Object]' ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {[
           { label: 'Name',     value: name,     set: setName,     placeholder: 'Alex',            secure: false, keyboard: 'default' as const },

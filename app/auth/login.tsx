@@ -33,7 +33,7 @@ export default function LoginScreen() {
         </View>
         <Text style={styles.title}>Welcome back</Text>
 
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {error && error !== '{}' && error !== '[object Object]' ? <Text style={styles.errorText}>{error}</Text> : null}
 
         <Text style={styles.label}>Email</Text>
         <TextInput
