@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router, Link } from 'expo-router';
 import { Colors, FontSize, FontWeight, Spacing, Radius } from '../../constants/theme';
@@ -10,6 +10,8 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
 
   const { register, isLoading, error, clearError } = useAuthStore();
+
+  useEffect(() => { clearError(); }, []);
 
   async function handleRegister() {
     clearError();
